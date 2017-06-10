@@ -6,13 +6,13 @@ experiments online for serving.
 
 ## Installation instructions
 
-To install voicenet, you will neet to install tensorflow>=v1.1.0 and sonnet.
+To install voicenet, you will need to install tensorflow>=v1.1.0 and sonnet.
 *See [Installing dependencies](https://github.com/npuichigo/voicenet/blob/master/INSTALL) for instructions on how to install all 
-the dependencies needed to use out framework.*
+the dependencies needed to use our framework.*
 
 ## Why we introduce sonnet
 
-In training acoustic models in speech synthesis, we commonly do one cross-validation
+On training acoustic models in speech synthesis, we commonly do one cross-validation
 iteration right after one training iteration, so variables reuse is important. However
 we usually write ugly codes like:
 
@@ -23,11 +23,12 @@ scope.reuse_variables()
 valid_model = LSTM(valid_input)
 ```
 
-In order to construct models with same variables on different inputs, we
-need to use `scope.reuse_variables()` explicit, which makes codes hard to
+In order to construct models sharing variables on different inputs, we
+need to use `scope.reuse_variables()` explicitly, which makes codes hard to
 read and unchaste. Sonnet moves codes which construct the computation graph
-to __call__ method of model classes, using tf.make_template to enable variable
-sharing, so it's just right for us to write concise codes with variable reuse:
+to __call__ method of model class, using tf.make_template to enable variable
+sharing, so it's just right for us to write concise codes with variable reusing
+ability:
 
 ```python
 model = LSTM(...)

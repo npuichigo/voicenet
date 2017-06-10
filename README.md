@@ -7,7 +7,7 @@ experiments online for serving.
 ## Installation instructions
 
 To install voicenet, you will need to install tensorflow>=v1.1.0 and sonnet.
-*See [Installing dependencies](https://github.com/npuichigo/voicenet/blob/master/INSTALL) for instructions on how to install all 
+*See [Installing dependencies](https://github.com/npuichigo/voicenet/blob/master/INSTALL.md) for instructions on how to install all 
 the dependencies needed to use our framework.*
 
 ## Why we introduce sonnet

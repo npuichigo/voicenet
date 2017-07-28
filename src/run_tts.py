@@ -28,7 +28,7 @@ import time
 import tensorflow as tf
 import utils.datasets as datasets
 
-from models.acoustic_model import AcousticModel
+from models.tf_model import TfModel
 from utils.utils import pp, show_all_variables, write_binary_file, ProgressBar
 
 # Basic model parameters as external flags.
@@ -88,7 +88,7 @@ def eval_one_epoch(sess, coord, valid_loss, valid_num_batches):
 
 
 def train():
-    """Run the training of the acoustic model."""
+    """Run the training of the acoustic or duration model."""
 
     dataset_train = datasets.SequenceDataset(
         subset="train",
@@ -114,7 +114,7 @@ def train():
         infer=False,
         name="dataset_valid")
 
-    model = AcousticModel(
+    model = TfModel(
         rnn_cell=FLAGS.rnn_cell,
         num_hidden=FLAGS.num_hidden,
         dnn_depth=FLAGS.dnn_depth,
@@ -124,7 +124,7 @@ def train():
         rnn_output=FLAGS.rnn_output,
         cnn_output=FLAGS.cnn_output,
         look_ahead=FLAGS.look_ahead,
-        name="acoustic_model")
+        name="tf_model")
 
     # Build the training model and get the training loss.
     train_input_sequence, train_target_sequence, train_length = dataset_train()
@@ -199,7 +199,6 @@ def train():
             loss_prev = eval_one_epoch(sess, coord, valid_loss, dataset_valid.num_batches)
             tf.logging.info("CROSSVAL PRERUN AVG.LOSS %.4f\n" % loss_prev)
 
-
             for epoch in xrange(FLAGS.max_epochs):
                 # Train one epoch
                 time_start = time.time()
@@ -254,7 +253,7 @@ def train():
 
 
 def decode():
-    """Run the decoding of the acoustic model."""
+    """Run the decoding of the acoustic or duration model."""
 
     with tf.device('/cpu:0'):
         dataset_test = datasets.SequenceDataset(
@@ -269,7 +268,7 @@ def decode():
             infer=True,
             name="dataset_test")
 
-        model = AcousticModel(
+        model = TfModel(
             rnn_cell=FLAGS.rnn_cell,
             num_hidden=FLAGS.num_hidden,
             dnn_depth=FLAGS.dnn_depth,
@@ -279,7 +278,7 @@ def decode():
             rnn_output=FLAGS.rnn_output,
             cnn_output=FLAGS.cnn_output,
             look_ahead=FLAGS.look_ahead,
-            name="acoustic_model")
+            name="tf_model")
 
         # Build the testing model and get test output sequence.
         test_input_sequence, test_length = dataset_test()
@@ -322,6 +321,7 @@ def decode():
                     dataset_test.tfrecords_lst[batch]).split('.')[0] + ".cmp"
                 out_path = os.path.join(out_dir_name, out_file_name)
                 write_binary_file(sequence.squeeze(), out_path, with_dim=False)
+                #np.savetxt(out_path, sequence.squeeze(), fmt="%f")
                 tf.logging.info(
                     "writing inferred cmp to %s (%d frames in %f seconds)" % (out_path, frames[0], used_time))
         except Exception, e:

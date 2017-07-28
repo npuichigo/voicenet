@@ -1,22 +1,9 @@
 #!/bin/bash
-
-# 1. Get and compile SPTK
-
-echo "downloading SPTK-3.9..."
-sptk_url=http://downloads.sourceforge.net/sp-tk/SPTK-3.9.tar.gz
-if hash curl 2>/dev/null; then
-    curl -L -O $sptk_url
-elif hash wget 2>/dev/null; then
-    wget $sptk_url
-else
-    echo "please download the SPTK-3.9 from $sptk_url"
-    exit 1
-fi
-tar xzf SPTK-3.9.tar.gz
+# 1. Getting SPTK-3.10
 
 echo "compiling SPTK..."
 (
-    cd SPTK-3.9;
+    cd SPTK-3.10;
     ./configure --prefix=$PWD/build;
     make;
     make install
@@ -24,26 +11,26 @@ echo "compiling SPTK..."
 
 # 2. Getting WORLD
 
-echo "compiling WORLD..."
+echo "compiling World..."
 (
-    cd WORLD;
+    cd World;
     make
-    make analysis synth
-    make clean
+    cd examples/analysis_synthesis;
+    make
 )
 
 # 3. Copy binaries
 
-SPTK_BIN_DIR=bin/SPTK-3.9
-WORLD_BIN_DIR=bin/WORLD
+SPTK_BIN_DIR=bin/SPTK-3.10
+WORLD_BIN_DIR=bin/World
 
 mkdir -p bin
 mkdir -p $SPTK_BIN_DIR
 mkdir -p $WORLD_BIN_DIR
 
-cp SPTK-3.9/build/bin/* $SPTK_BIN_DIR/
-cp WORLD/build/analysis $WORLD_BIN_DIR/
-cp WORLD/build/synth $WORLD_BIN_DIR/
+cp SPTK-3.10/build/bin/* $SPTK_BIN_DIR/
+cp World/build/analysis $WORLD_BIN_DIR/
+cp World/build/synthesis $WORLD_BIN_DIR/
 
 if [[ ! -f ${SPTK_BIN_DIR}/x2x ]]; then
     echo "Error installing SPTK tools"

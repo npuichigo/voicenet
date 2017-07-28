@@ -26,6 +26,7 @@ config=config
 dir=exp/acoustic
 add_delta=false
 kaldi_format=false
+export_graph=true
 
 set -euo pipefail
 
@@ -94,4 +95,12 @@ if [ $stage -le 3 ]; then
   echo "Synthesizing wav"
   python $voicenet_dir/misc/scripts/split_cmp.py --dir=$dir/test
   sh $voicenet_dir/misc/scripts/synthesize.sh $dir/test
+fi
+
+# Export graph for inference
+if [ $stage -le 4 ]; then
+  if $export_graph; then
+    echo "Exporting graph"
+    CUDA_VISIBLE_DEVICES= TF_CPP_MIN_LOG_LEVEL=1 python $voicenet_dir/src/export_inference_graph.py  --output_file=$dir/acoustic_inf_graph.pb "$@"
+  fi
 fi

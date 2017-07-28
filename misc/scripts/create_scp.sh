@@ -42,5 +42,5 @@ set -euo pipefail
 > ${dir}/all.scp
 for filename in *.${ext}; do
     basename=${filename%.*}
-    echo $basename $(pwd)/$filename >> ${dir}/all.scp 
+    echo $basename $(pwd)/$filename >> ${dir}/all.scp
 done

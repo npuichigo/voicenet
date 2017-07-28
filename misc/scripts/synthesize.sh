@@ -23,8 +23,8 @@ echo "$0 $@"  # Print the command line for logging
 voicenet_dir=$(dirname $(dirname $(pwd)))
 
 # tools directory
-world="${voicenet_dir}/tools/bin/WORLD"
-sptk="${voicenet_dir}/tools/bin/SPTK-3.9"
+world="${voicenet_dir}/tools/bin/World"
+sptk="${voicenet_dir}/tools/bin/SPTK-3.10"
 
 if [ $# != 1 ]; then
   echo "Usage: synthesize.sh <dir>"
@@ -80,7 +80,7 @@ do
     ### convert bap to ap ###
     $sptk/mgc2sp -a $alpha -g 0 -m $order -l $nFFTHalf -o 2 ${bap_dir}/$file_id.bap | $sptk/sopr -d 32768.0 -P | $sptk/x2x +fd > ${syn_dir}/$file_id.syn.ap
 
-    $world/synth $nFFTHalf $fs ${syn_dir}/$file_id.syn.f0 ${syn_dir}/$file_id.syn.sp ${syn_dir}/$file_id.syn.ap ${syn_wav_dir}/$file_id.syn.wav
+    $world/synthesis ${syn_dir}/$file_id.syn.f0 ${syn_dir}/$file_id.syn.sp ${syn_dir}/$file_id.syn.ap ${syn_wav_dir}/$file_id.syn.wav
 done
 
-rm -rf $syn_dir
+#rm -rf $syn_dir

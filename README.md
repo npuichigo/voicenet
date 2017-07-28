@@ -14,7 +14,7 @@ the dependencies needed to use our framework.*
 
 On training acoustic models in speech synthesis, we commonly do one cross-validation
 iteration right after one training iteration, so variables reuse is important. However
-we usually write ugly codes like:
+we usually write inelegent codes like:
 
 ```python
 train_model = LSTM(train_input)

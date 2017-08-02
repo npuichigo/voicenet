@@ -1,9 +1,9 @@
 #!/bin/bash
-# 1. Getting SPTK-3.10
+# 1. Getting SPTK-3.9
 
 echo "compiling SPTK..."
 (
-    cd SPTK-3.10;
+    cd SPTK-3.9;
     ./configure --prefix=$PWD/build;
     make;
     make install
@@ -21,7 +21,7 @@ echo "compiling World..."
 
 # 3. Copy binaries
 
-SPTK_BIN_DIR=bin/SPTK-3.10
+SPTK_BIN_DIR=bin/SPTK-3.9
 WORLD_BIN_DIR=bin/World
 
 mkdir -p bin

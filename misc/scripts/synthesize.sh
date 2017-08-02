@@ -24,7 +24,7 @@ voicenet_dir=$(dirname $(dirname $(pwd)))
 
 # tools directory
 world="${voicenet_dir}/tools/bin/World"
-sptk="${voicenet_dir}/tools/bin/SPTK-3.10"
+sptk="${voicenet_dir}/tools/bin/SPTK-3.9"
 
 if [ $# != 1 ]; then
   echo "Usage: synthesize.sh <dir>"

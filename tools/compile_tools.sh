@@ -28,7 +28,7 @@ mkdir -p bin
 mkdir -p $SPTK_BIN_DIR
 mkdir -p $WORLD_BIN_DIR
 
-cp SPTK-3.10/build/bin/* $SPTK_BIN_DIR/
+cp SPTK-3.9/build/bin/* $SPTK_BIN_DIR/
 cp World/build/analysis $WORLD_BIN_DIR/
 cp World/build/synthesis $WORLD_BIN_DIR/
 

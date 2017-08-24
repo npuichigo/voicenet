@@ -45,7 +45,6 @@ if [ $stage -le 0 ]; then
   if $kaldi_format; then
     [ -f $voicenet_dir/misc/scripts/kaldi_path.sh ] && . $voicenet_dir/misc/scripts/kaldi_path.sh;
     for x in train test val; do
-        cmp_context_mat[:, 0] = cmp_mat[:, 0]
     {
       convert-binary-to-matrix "ark:${raw}/prepared_label/label_scp/${x}.scp" "ark,scp:${data}/${x}_label.ark,${data}/${x}_label.scp"
       convert-binary-to-matrix "ark:${raw}/prepared_cmp/param_scp/${x}.scp" "ark,scp:${data}/${x}_param.ark,${data}/${x}_param.scp"

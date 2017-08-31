@@ -36,7 +36,7 @@ class TfrecordsIoTest(tf.test.TestCase):
         """Test reading padded sequences from tfrecords.
 
         """
-        name = 'val'
+        name = 'valid'
         config_file = open(os.path.join(FLAGS.config_dir, name +  ".lst"))
         tfrecords_lst = []
         for line in config_file:
@@ -49,7 +49,7 @@ class TfrecordsIoTest(tf.test.TestCase):
             inputs, labels, lengths = get_padded_batch(
                 tfrecords_lst, FLAGS.batch_size, FLAGS.input_dim,
                 FLAGS.output_dim, num_enqueuing_threads=FLAGS.num_threads,
-                num_epochs=FLAGS.num_epochs)
+                num_epochs=FLAGS.num_epochs, infer=False)
 
             init = tf.group(tf.global_variables_initializer(),
                             tf.local_variables_initializer())
@@ -91,7 +91,7 @@ class TfrecordsIoTest(tf.test.TestCase):
         """Test reading spliced mini-batch from tfrecords
 
         """
-        name = 'val'
+        name = 'valid'
         config_file = open(os.path.join(FLAGS.config_dir, name +  ".lst"))
         tfrecords_lst = []
         for line in config_file:
@@ -144,7 +144,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--input_dim',
         type=int,
-        default=145,
+        default=425,
         help='The dimension of inputs.'
     )
     parser.add_argument(
@@ -168,7 +168,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--data_dir',
         type=str,
-        default='data/tfrecords/',
+        default='data/',
         help='Directory of train, val and test data.'
     )
     parser.add_argument(

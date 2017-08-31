@@ -24,6 +24,7 @@ import sonnet as snt
 import tensorflow as tf
 
 from tensorflow.contrib.rnn.python.ops import rnn
+from models.quasi_rnn import QuasiRNN
 
 
 class TfModel(snt.AbstractModule):
@@ -31,7 +32,7 @@ class TfModel(snt.AbstractModule):
 
     def __init__(self, rnn_cell, num_hidden, dnn_depth, rnn_depth, output_size,
                  bidirectional=False, rnn_output=False, cnn_output=False,
-                 look_ahead=5, name="acoustic_model"):
+                 look_ahead=5, mdn_output=False, mix_num=1, name="acoustic_model"):
         """Constructs a TfModel.
 
         Args:
@@ -44,6 +45,8 @@ class TfModel(snt.AbstractModule):
             rnn_output: Whether to use ROL(Rnn Output Layer).
             cnn_output: Whether to use COL(Cnn Output Layer).
             look_ahead: Look ahead window size, used together with cnn_output.
+            mdn_output: Whether to interpret last layer as mixture density layer.
+            mix_num: Number of gaussian mixes in mdn layer.
             name: Name of the module.
         """
 
@@ -66,6 +69,8 @@ class TfModel(snt.AbstractModule):
         self._rnn_output = rnn_output
         self._cnn_output = cnn_output
         self._look_ahead = look_ahead
+        self._mdn_output = mdn_output
+        self._mix_num = mix_num
 
         with self._enter_variable_scope():
             self._input_module = snt.nets.MLP(
@@ -73,6 +78,12 @@ class TfModel(snt.AbstractModule):
                 activation=tf.nn.relu,
                 activate_final=True,
                 name="mlp_input")
+
+            #self._quasi_rnns = [QuasiRNN(filter_width=2,
+            #                             num_hidden=256,
+            #                             pool_type='fo',
+            #                             name="qusi_rnn_{}".format(i))
+            #                    for i in xrange(4)]
 
             if not self._bidirectional:
                 self._rnns = [
@@ -92,15 +103,21 @@ class TfModel(snt.AbstractModule):
                     ]),
                 }
 
+            # If mdn output is used, output size should be mix_num * (2 * output_dim + 1).
+            if self._mdn_output:
+                output_size = self._mdn_output_size = self._mix_num * (2 * self._output_size + 1)
+            else:
+                output_size = self._output_size
+
             if self._rnn_output and self._cnn_output:
                 raise ValueError("rnn_output and cnn_output cannot be "
                                  "specified at the same time.")
             if self._rnn_output:
                 self._output_module = tf.nn.rnn_cell.BasicRNNCell(
-                    self._output_size, activation=tf.identity)
+                    output_size, activation=tf.identity)
             elif self._cnn_output:
                 self._output_module = {
-                    "linear": snt.Linear(self._output_size, name="linear"),
+                    "linear": snt.Linear(output_size, name="linear"),
                     "cnn": snt.Conv2D(
                         output_channels=1,
                         kernel_shape=(self._look_ahead, 1),
@@ -108,15 +125,14 @@ class TfModel(snt.AbstractModule):
                         name="cnn_output")
                 }
             else:
-                self._output_module = snt.Linear(self._output_size, name="linear_output")
+                self._output_module = snt.Linear(output_size, name="linear_output")
 
     def _build(self, input_sequence, input_length):
         """Builds the deep LSTM model sub-graph.
 
         Args:
-        one_hot_input_sequence: A Tensor with the input sequence encoded as a
-        one-hot representation. Its dimensions should be `[
-        batch_size, length, output_size]`.
+        input_sequence: A 3D Tensor with padded input sequence data.
+        input_length. Actual length of each sequence in padded input data.
 
         Returns:
             Tuple of the Tensor of output logits for the batch, with dimensions
@@ -126,6 +142,10 @@ class TfModel(snt.AbstractModule):
 
         batch_input_module = snt.BatchApply(self._input_module)
         output_sequence = batch_input_module(input_sequence)
+
+        #for layer_id in xrange(2):
+        #    quasi_rnn = self._quasi_rnns[layer_id]
+        #    output_sequence, final_state = quasi_rnn(output_sequence, input_length)
 
         if not self._bidirectional:
             output_sequence, final_state = tf.nn.dynamic_rnn(
@@ -152,11 +172,16 @@ class TfModel(snt.AbstractModule):
         elif self._cnn_output:
             if not self._bidirectional:
                 for i in xrange(self._look_ahead - 1):
-                    output_sequence = tf.pad(output_sequence, [[0, 0], [0, 1], [0, 0]], "SYMMETRIC")
+                    output_sequence = tf.pad(output_sequence,
+                                             [[0, 0], [0, 1], [0, 0]],
+                                             "SYMMETRIC")
             else:
                 for i in xrange((self._look_ahead - 1) / 2):
-                    output_sequence = tf.pad(output_sequence, [[0, 0], [1, 1], [0, 0]], "SYMMETRIC")
-            output_sequence = snt.BatchApply(self._output_module["linear"])(output_sequence)
+                    output_sequence = tf.pad(output_sequence,
+                                             [[0, 0], [1, 1], [0, 0]],
+                                             "SYMMETRIC")
+            batch_output_module = snt.BatchApply(self._output_module["linear"])
+            output_sequence = batch_output_module(output_sequence)
             output_sequence_logits = tf.squeeze(self._output_module["cnn"](
                 tf.expand_dims(output_sequence, -1)))
         else:
@@ -173,20 +198,64 @@ class TfModel(snt.AbstractModule):
             target: target.
 
         Returns:
-            RMSE loss for a sequence of logits. The loss will be averaged
-            across time steps if time_average_cost was enabled at construction time.
+            RMSE or MDN loss for a sequence of logits. The loss will be averaged.
         """
-        # Compute mse for each frame.
-        loss = tf.reduce_sum(
-            0.5 * tf.square(logits - target), axis=[2])
-        # Mask the loss.
-        mask = tf.cast(
-            tf.sequence_mask(length, tf.shape(logits)[1]), tf.float32)
-        loss *= mask
-        # Average over actual sequence lengths.
-        loss = tf.reduce_mean(
-            tf.reduce_sum(loss, axis=[1]) / tf.cast(length, tf.float32))
-        return loss
+        if not self._mdn_output:
+            # Compute mse for each frame.
+            loss = tf.reduce_sum(
+                0.5 * tf.square(logits - target), axis=[2])
+            # Mask the loss.
+            mask = tf.cast(
+                tf.sequence_mask(length, tf.shape(logits)[1]), tf.float32)
+            loss *= mask
+            # Average over actual sequence lengths.
+            loss = tf.reduce_mean(
+                tf.reduce_sum(loss, axis=[1]) / tf.cast(length, tf.float32))
+            return loss
+        else:
+            # Mask the logits sequence.
+            mask = tf.cast(
+                tf.sequence_mask(length, tf.shape(logits)[1]), tf.float32)
+            logits *= tf.expand_dims(mask, 2)
+            logits = tf.reshape(logits, [-1, self._mdn_output_size])
+            target = tf.reshape(target, [-1, self._output_size])
+
+            out_pi, out_mu, out_sigma = self._get_mixture_coef(logits, self._mix_num)
+
+            all_mix_prob = []
+            for i in xrange(self._mix_num):
+                pi = out_pi[:, i : (i + 1)]
+                mu = out_mu[:, i * self._output_size : (i + 1) * self._output_size]
+                sigma = out_sigma[:, i * self._output_size : (i + 1) * self._output_size]
+
+                tmp = tf.multiply(tf.square(target - mu), tf.reciprocal(sigma))
+                xEx = -0.5 * tf.reduce_sum(tmp, 1, keep_dims=True)
+                normaliser = tf.reduce_sum(tf.log(sigma), 1, keep_dims=True)
+                exponent = xEx + tf.log(pi) - normaliser
+                all_mix_prob.append(exponent)
+
+            all_mix_prob = tf.concat(all_mix_prob, 1)
+            max_exponent = tf.reduce_max(all_mix_prob, 1, keep_dims=True)
+            mod_exponent = all_mix_prob - max_exponent
+
+            finetune_cost = -tf.reduce_mean(
+                max_exponent + tf.log(tf.reduce_sum(tf.exp(mod_exponent), 1, keep_dims=True)))
+
+            return finetune_cost
+
+    def _get_mixture_coef(self, logits, mix_num, var_floor=0.01):
+        # pi1, pi2, pi3...
+        out_pi = logits[:, :mix_num]  #pi1,pi2,pi3...
+        # sigma1, sigma2, sigma3...
+        out_mu = logits[:, mix_num:(mix_num + mix_num * self._output_size)]
+        # mu1, mu2, mu3...
+        out_sigma = logits[:, (mix_num + mix_num * self._output_size):]
+
+        out_pi = tf.nn.softmax(out_pi)
+        out_sigma = tf.exp(out_sigma)
+        out_sigma = tf.maximum(var_floor, out_sigma)
+
+        return out_pi, out_mu, out_sigma
 
     def _unpack_cell(self, cell):
         """Unpack the cells because the stack_bidirectional_dynamic_rnn

@@ -124,6 +124,8 @@ def train():
         rnn_output=FLAGS.rnn_output,
         cnn_output=FLAGS.cnn_output,
         look_ahead=FLAGS.look_ahead,
+        mdn_output=FLAGS.mdn_output,
+        mix_num=FLAGS.mix_num,
         name="tf_model")
 
     # Build the training model and get the training loss.
@@ -216,11 +218,8 @@ def train():
                     epoch + 1, FLAGS.learning_rate, tr_loss, val_loss)
                 checkpoint_path = os.path.join(FLAGS.save_dir, "nnet", cptk_name)
 
-                # Relative loss between previous and current val_loss
-                rel_impr = (loss_prev - val_loss) / loss_prev
-
                 # accept or reject new parameters
-                if rel_impr > FLAGS.reduce_learning_rate_impr:
+                if val_loss < loss_prev:
                     saver.save(sess, checkpoint_path)
                     # logging training loss along with validation loss
                     tf.logging.info(
@@ -309,19 +308,31 @@ def decode():
                 if coord.should_stop():
                     break
                 time_start = time.time()
-                logits, frames = sess.run([test_output_sequence_logits,
-                                                test_length])
+                logits, frames = sess.run([test_output_sequence_logits, test_length])
                 time_end = time.time()
                 used_time = time_end - time_start
                 used_time_sum += used_time
                 frames_sum += frames[0]
+                # Squeeze batch dimension.
+                logits = logits.squeeze()
+                if FLAGS.mdn_output:
+                    out_pi = logits[:, : FLAGS.mix_num]
+                    out_mu = logits[:, FLAGS.mix_num : (FLAGS.mix_num + FLAGS.mix_num * FLAGS.output_dim)]
+                    out_sigma = logits[:, (FLAGS.mix_num + FLAGS.mix_num * FLAGS.output_dim) :]
+                    max_index_pi = out_pi.argmax(axis=1)
+                    result_mu = []
+                    for i in xrange(out_mu.shape[0]):
+                        beg_index = max_index_pi[i] * FLAGS.output_dim
+                        end_index = (max_index_pi[i] + 1) * FLAGS.output_dim
+                        result_mu.append(out_mu[i, beg_index:end_index])
+                    logits = np.vstack(result_mu)
                 sequence = logits * cmvn["stddev_labels"] + cmvn["mean_labels"]
                 out_dir_name = os.path.join(FLAGS.save_dir, "test", "cmp")
                 out_file_name =os.path.basename(
                     dataset_test.tfrecords_lst[batch]).split('.')[0] + ".cmp"
                 out_path = os.path.join(out_dir_name, out_file_name)
-                write_binary_file(sequence.squeeze(), out_path, with_dim=False)
-                #np.savetxt(out_path, sequence.squeeze(), fmt="%f")
+                write_binary_file(sequence, out_path, with_dim=False)
+                #np.savetxt(out_path, sequence, fmt="%f")
                 tf.logging.info(
                     "writing inferred cmp to %s (%d frames in %f seconds)" % (out_path, frames[0], used_time))
         except Exception, e:
@@ -433,6 +444,18 @@ if __name__ == '__main__':
         help='Number of steps to look ahead in cnn output layer.',
     )
     parser.add_argument(
+        '--mdn_output',
+        type=_str_to_bool,
+        default=False,
+        help='Whether to use mdn as the output layer.'
+    )
+    parser.add_argument(
+        '--mix_num',
+        type=int,
+        default=1,
+        help='Number of gaussian mixes in mdn output layer.',
+    )
+    parser.add_argument(
         '--batch_size',
         type=int,
         default=32,
@@ -455,12 +478,6 @@ if __name__ == '__main__':
         type=float,
         default=0.5,
         help='Factor for reducing learning rate.'
-    )
-    parser.add_argument(
-        '--reduce_learning_rate_impr',
-        type=float,
-        default=0.0,
-        help='Reduce and retrain when relative loss is lower than certain improvement.'
     )
     parser.add_argument(
         '--num_threads',

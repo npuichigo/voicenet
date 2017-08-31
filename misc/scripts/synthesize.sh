@@ -83,4 +83,4 @@ do
     $world/synthesis ${syn_dir}/$file_id.syn.f0 ${syn_dir}/$file_id.syn.sp ${syn_dir}/$file_id.syn.ap ${syn_wav_dir}/$file_id.syn.wav
 done
 
-#rm -rf $syn_dir
+rm -rf $syn_dir

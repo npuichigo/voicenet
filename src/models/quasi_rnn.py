@@ -48,12 +48,12 @@ class RecurrentPooling(tf.nn.rnn_cell.RNNCell):
     return self._num_units
 
   def call(self, inputs, state):
-    """fo-pooling: output = new_state = f * state + (1-f) * inputs."""
     with tf.variable_scope("{}_pooling".format(self._pool_type)):
         if self._pool_type == 'f':
             z, f = tf.split(inputs, len(self._pool_type) + 1, 1)
             output = new_state = tf.multiply(f, state) + tf.multiply(1 - f, z)
             return (output, output)
+        # fo-pooling: output = new_state = f * state + (1-f) * inputs.
         elif self._pool_type == 'fo':
             z, f, o = tf.split(inputs, len(self._pool_type) + 1, 1)
             new_state = tf.multiply(f, state) + tf.multiply(1 - f, z)

@@ -25,7 +25,7 @@ import sonnet as snt
 import tensorflow as tf
 
 sys.path.append(os.path.dirname(sys.path[0]))
-from io_funcs.tfrecords_io import get_padded_batch
+from io_funcs.tfrecords_io import get_padded_batch, get_seq2seq_batch
 
 
 class SequenceDataset(snt.AbstractModule):
@@ -53,7 +53,7 @@ class SequenceDataset(snt.AbstractModule):
         self._num_epochs = num_epochs
         self._infer = infer
         self._tfrecords_lst = self.read_config_file(subset)
-        self._num_batches = int(math.ceil(len(self._tfrecords_lst) / self._batch_size))
+        self._num_batches = int(math.ceil(len(self._tfrecords_lst) / float(self._batch_size)))
 
     def _build(self):
         if not self._infer:

@@ -26,6 +26,7 @@ import tensorflow as tf
 
 from tfrecords_io import get_padded_batch
 from tfrecords_io import get_spliced_batch
+from tf_datasets import SequenceDataset
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
@@ -33,9 +34,7 @@ tf.logging.set_verbosity(tf.logging.INFO)
 class TfrecordsIoTest(tf.test.TestCase):
 
     def testReadPaddedBatchTfrecords(self):
-        """Test reading padded sequences from tfrecords.
-
-        """
+        """Test reading padded sequences from tfrecords."""
         name = 'valid'
         config_file = open(os.path.join(FLAGS.config_dir, name +  ".lst"))
         tfrecords_lst = []
@@ -60,15 +59,7 @@ class TfrecordsIoTest(tf.test.TestCase):
 
             coord = tf.train.Coordinator()
             threads = tf.train.start_queue_runners(sess=sess, coord=coord)
-            '''
-            with tf.train.SingularMonitoredSession() as sess:
-                while not sess.should_stop():
-                    tr_inputs, tr_labels, tr_lengths = sess.run([
-                        inputs, labels, lengths])
-                    tf.logging.info('inputs shape : '+ str(tr_inputs.shape))
-                    tf.logging.info('labels shape : ' + str(tr_labels.shape))
-                    tf.logging.info('actual lengths : ' + str(tr_lengths))
-            '''
+
             try:
                 while not coord.should_stop():
                     # Print an overview fairly often.
@@ -88,9 +79,7 @@ class TfrecordsIoTest(tf.test.TestCase):
             sess.close()
 
     def testReadSplicedBatchTfrecords(self):
-        """Test reading spliced mini-batch from tfrecords
-
-        """
+        """Test reading spliced mini-batch from tfrecords."""
         name = 'valid'
         config_file = open(os.path.join(FLAGS.config_dir, name +  ".lst"))
         tfrecords_lst = []
@@ -132,6 +121,70 @@ class TfrecordsIoTest(tf.test.TestCase):
             coord.join(threads)
             sess.close()
 
+    def testTfDatasetsForTraining(self):
+        """Test reading tfrecords using tf.contrib.data.Dataset for training."""
+        dataset_valid = SequenceDataset(
+            subset="valid",
+            config_dir=FLAGS.config_dir,
+            data_dir=FLAGS.data_dir,
+            batch_size=FLAGS.batch_size,
+            input_size=FLAGS.input_dim,
+            output_size=FLAGS.output_dim,
+            num_threads=FLAGS.num_threads,
+            use_bucket=True,
+            infer=False,
+            name="sequence_dataset")
+
+        iterator = dataset_valid()
+
+        sess = tf.Session()
+        sess.run(tf.global_variables_initializer())
+
+        # Compute for 2 epochs
+        for epoch in range(2):
+            sess.run(iterator.initializer)
+            while True:
+                try:
+                    input_seq, input_seq_len, target_seq, target_seq_len = sess.run(
+                        [iterator.input_sequence,
+                         iterator.input_sequence_length,
+                         iterator.target_sequence,
+                         iterator.target_sequence_length])
+                    tf.logging.info('inputs shape : '+ str(input_seq.shape))
+                    tf.logging.info('actual inputs length : '+ str(input_seq_len))
+                    tf.logging.info('labels shape : ' + str(target_seq.shape))
+                    tf.logging.info('actual labels length : '+ str(target_seq_len))
+                except tf.errors.OutOfRangeError:
+                    break
+
+    def testTfDatasetsForInference(self):
+        """Test reading tfrecords using tf.contrib.data.Dataset for inference."""
+        dataset_test = SequenceDataset(
+            subset="test",
+            config_dir=FLAGS.config_dir,
+            data_dir=FLAGS.data_dir,
+            batch_size=1,
+            input_size=FLAGS.input_dim,
+            output_size=FLAGS.output_dim,
+            infer=True,
+            name="sequence_dataset")
+
+        iterator = dataset_test()
+
+        sess = tf.Session()
+        sess.run(tf.global_variables_initializer())
+
+        sess.run(iterator.initializer)
+        while True:
+            try:
+                input_seq, input_seq_len = sess.run(
+                    [iterator.input_sequence,
+                     iterator.input_sequence_length])
+                tf.logging.info('inputs shape : '+ str(input_seq.shape))
+                tf.logging.info('actual inputs length : '+ str(input_seq_len))
+            except tf.errors.OutOfRangeError:
+                break
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -156,7 +209,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--num_threads',
         type=int,
-        default=8,
+        default=4,
         help='The num of threads to read tfrecords files.'
     )
     parser.add_argument(

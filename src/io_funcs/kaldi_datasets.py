@@ -26,7 +26,7 @@ from __future__ import print_function
 
 import numpy as np
 import struct
-from io_funcs.kaldi_io import ArkReader
+from kaldi_io import ArkReader
 
 
 class FeatureReader:

@@ -37,14 +37,13 @@ def calculate_cmvn(name):
     tf.logging.info("Calculating mean and var of %s" % name)
     config_filename = open(os.path.join(FLAGS.config_dir, name + '.lst'))
 
-    frame_count = 0
+    inputs_frame_count, labels_frame_count = 0, 0
     for line in config_filename:
         utt_id, inputs_path, labels_path = line.strip().split()
         tf.logging.info("Reading utterance %s" % utt_id)
         inputs = read_binary_file(inputs_path, FLAGS.input_dim)
         labels = read_binary_file(labels_path, FLAGS.output_dim)
-        assert len(inputs) == len(labels)
-        if frame_count == 0:    # create numpy array for accumulating
+        if inputs_frame_count == 0:    # create numpy array for accumulating
             ex_inputs = np.sum(inputs, axis=0)
             ex2_inputs = np.sum(inputs**2, axis=0)
             ex_labels = np.sum(labels, axis=0)
@@ -54,14 +53,15 @@ def calculate_cmvn(name):
             ex2_inputs += np.sum(inputs**2, axis=0)
             ex_labels += np.sum(labels, axis=0)
             ex2_labels += np.sum(labels**2, axis=0)
-        frame_count += len(inputs)
+        inputs_frame_count += len(inputs)
+        labels_frame_count += len(labels)
 
-    mean_inputs = ex_inputs / frame_count
-    stddev_inputs = np.sqrt(ex2_inputs / frame_count - mean_inputs**2)
+    mean_inputs = ex_inputs / inputs_frame_count
+    stddev_inputs = np.sqrt(ex2_inputs / inputs_frame_count - mean_inputs**2)
     stddev_inputs[stddev_inputs < 1e-20] = 1e-20
 
-    mean_labels = ex_labels / frame_count
-    stddev_labels = np.sqrt(ex2_labels / frame_count - mean_labels**2)
+    mean_labels = ex_labels / labels_frame_count
+    stddev_labels = np.sqrt(ex2_labels / labels_frame_count - mean_labels**2)
     stddev_labels[stddev_labels < 1e-20] = 1e-20
 
     cmvn_name = os.path.join(FLAGS.output_dir, name + "_cmvn.npz")

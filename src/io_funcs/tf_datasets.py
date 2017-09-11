@@ -27,9 +27,9 @@ import tensorflow as tf
 
 class BatchedInput(
     collections.namedtuple("BatchedInput",
-                           ("initializer", "input_sequence", "target_sequence",
-                            "input_sequence_length", "target_sequence_length"))):
-  pass
+                          ("initializer", "input_sequence", "target_sequence",
+                           "input_sequence_length", "target_sequence_length"))):
+    pass
 
 class SequenceDataset(snt.AbstractModule):
     """Sequence dataset provider."""

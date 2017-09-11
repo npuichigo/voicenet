@@ -26,9 +26,9 @@ import sys
 import sonnet as snt
 import time
 import tensorflow as tf
-import utils.datasets as datasets
 
 from models.tf_model import TfModel
+from io_funcs.tf_datasets import SequenceDataset
 from utils.utils import pp, show_all_variables, write_binary_file, ProgressBar
 
 # Basic model parameters as external flags.
@@ -45,74 +45,78 @@ def restore_from_ckpt(sess, saver):
         return False
 
 
-def train_one_epoch(sess, coord, summary_writer, merged, global_step,
+def train_one_epoch(sess, summary_writer, merged, global_step,
                     train_step, train_loss, train_num_batches):
     if FLAGS.show:
         bar = ProgressBar('Training', max=train_num_batches)
 
-    tr_loss = 0
-    for batch in xrange(train_num_batches):
+    tr_loss = num_batches = 0
+    while True:
         if FLAGS.show: bar.next()
-        if coord.should_stop():
+        try:
+            if num_batches % 50 == 49:
+                _, loss, summary, step = sess.run([train_step, train_loss,
+                                                   merged, global_step])
+                summary_writer.add_summary(summary, step)
+            else:
+                _, loss = sess.run([train_step, train_loss])
+            tr_loss += loss
+            num_batches += 1
+        except tf.errors.OutOfRangeError:
             break
-        if batch % 50 == 49:
-            _, loss, summary, step = sess.run([train_step, train_loss,
-                                               merged, global_step])
-            summary_writer.add_summary(summary, step)
-        else:
-            _, loss = sess.run([train_step, train_loss])
-        tr_loss += loss
 
     if FLAGS.show: bar.finish()
 
-    tr_loss /= train_num_batches
+    tr_loss /= float(num_batches)
     return tr_loss
 
 
-def eval_one_epoch(sess, coord, valid_loss, valid_num_batches):
+def eval_one_epoch(sess, valid_loss, valid_num_batches):
     if FLAGS.show:
         bar = ProgressBar('Validation', max=valid_num_batches)
 
-    val_loss = 0
-    for batch in xrange(valid_num_batches):
+    val_loss = num_batches = 0
+    while True:
         if FLAGS.show: bar.next()
-        if coord.should_stop():
+        try:
+            loss = sess.run(valid_loss)
+            val_loss += loss
+            num_batches += 1
+        except tf.errors.OutOfRangeError:
             break
-        loss = sess.run(valid_loss)
-        val_loss += loss
 
     if FLAGS.show: bar.finish()
 
-    val_loss /= valid_num_batches
+    val_loss /= float(num_batches)
     return val_loss
 
 
 def train():
     """Run the training of the acoustic or duration model."""
 
-    dataset_train = datasets.SequenceDataset(
+    dataset_train = SequenceDataset(
         subset="train",
         config_dir=FLAGS.config_dir,
         data_dir=FLAGS.data_dir,
         batch_size=FLAGS.batch_size,
         input_size=FLAGS.input_dim,
         output_size=FLAGS.output_dim,
-        num_enqueuing_threads=FLAGS.num_threads,
-        num_epochs=FLAGS.max_epochs,
+        num_threads=FLAGS.num_threads,
+        use_bucket=True,
         infer=False,
         name="dataset_train")
 
-    dataset_valid = datasets.SequenceDataset(
+    dataset_valid = SequenceDataset(
         subset="valid",
         config_dir=FLAGS.config_dir,
         data_dir=FLAGS.data_dir,
         batch_size=FLAGS.batch_size,
         input_size=FLAGS.input_dim,
         output_size=FLAGS.output_dim,
-        num_enqueuing_threads=FLAGS.num_threads,
-        num_epochs=FLAGS.max_epochs + 1,
+        num_threads=FLAGS.num_threads,
+        use_bucket=True,
         infer=False,
-        name="dataset_valid")
+        name="dataset_train")
 
     model = TfModel(
         rnn_cell=FLAGS.rnn_cell,
@@ -129,19 +133,25 @@ def train():
         name="tf_model")
 
     # Build the training model and get the training loss.
-    train_input_sequence, train_target_sequence, train_length = dataset_train()
+    train_iterator = dataset_train()
     train_output_sequence_logits, train_final_state = model(
-        train_input_sequence, train_length)
+        train_iterator.input_sequence,
+        train_iterator.input_sequence_length)
     train_loss = model.cost(
-        train_output_sequence_logits, train_target_sequence, train_length)
+        train_output_sequence_logits,
+        train_iterator.target_sequence,
+        train_iterator.target_sequence_length)
     tf.summary.scalar('train_loss', train_loss)
 
     # Get the validation loss.
-    valid_input_sequence, valid_target_sequence, valid_length = dataset_valid()
+    valid_iterator = dataset_valid()
     valid_output_sequence_logits, valid_final_state = model(
-        valid_input_sequence, valid_length)
+        valid_iterator.input_sequence,
+        valid_iterator.input_sequence_length)
     valid_loss = model.cost(
-        valid_output_sequence_logits, valid_target_sequence, valid_length)
+        valid_output_sequence_logits,
+        valid_iterator.target_sequence,
+        valid_iterator.target_sequence_length)
 
     # Set up optimizer with global norm clipping.
     trainable_variables = tf.trainable_variables()
@@ -181,8 +191,7 @@ def train():
     config.gpu_options.allow_growth = True
     with tf.Session(config=config) as sess:
         # Run init
-        sess.run(tf.group(tf.global_variables_initializer(),
-                          tf.local_variables_initializer()))
+        sess.run(tf.global_variables_initializer())
 
         summary_writer = tf.summary.FileWriter(
             os.path.join(FLAGS.save_dir, "nnet"), sess.graph)
@@ -190,80 +199,69 @@ def train():
         if FLAGS.resume_training:
             restore_from_ckpt(sess, saver)
 
-        coord = tf.train.Coordinator()
-        threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+        # add a blank line for log readability
+        print()
+        sys.stdout.flush()
 
-        try:
+        sess.run(valid_iterator.initializer)
+        loss_prev = eval_one_epoch(sess, valid_loss, dataset_valid.num_batches)
+        tf.logging.info("CROSSVAL PRERUN AVG.LOSS %.4f\n" % loss_prev)
+
+        for epoch in xrange(FLAGS.max_epochs):
+            # Train one epoch
+            time_start = time.time()
+            sess.run(train_iterator.initializer)
+            tr_loss = train_one_epoch(sess, summary_writer, merged_all, global_step,
+                                      train_step, train_loss, dataset_train.num_batches)
+            time_end = time.time()
+            used_time = time_end - time_start
+
+            # Validate one epoch
+            sess.run(valid_iterator.initializer)
+            val_loss = eval_one_epoch(sess, valid_loss, dataset_valid.num_batches)
+
+            # Determine checkpoint path
+            FLAGS.learning_rate = sess.run(learning_rate)
+            cptk_name = 'nnet_epoch%d_lrate%g_tr%.4f_cv%.4f' % (
+                epoch + 1, FLAGS.learning_rate, tr_loss, val_loss)
+            checkpoint_path = os.path.join(FLAGS.save_dir, "nnet", cptk_name)
+
+            # accept or reject new parameters
+            if val_loss < loss_prev:
+                saver.save(sess, checkpoint_path)
+                # logging training loss along with validation loss
+                tf.logging.info(
+                    "EPOCH %d: TRAIN AVG.LOSS %.4f, (lrate%g) "
+                    "CROSSVAL AVG.LOSS %.4f, TIME USED %.2f, %s" % (
+                        epoch + 1, tr_loss, FLAGS.learning_rate, val_loss,
+                        used_time, "nnet accepted"))
+                loss_prev = val_loss
+            else:
+                tf.logging.info(
+                    "EPOCH %d: TRAIN AVG.LOSS %.4f, (lrate%g) "
+                    "CROSSVAL AVG.LOSS %.4f, TIME USED %.2f, %s" % (
+                        epoch + 1, tr_loss, FLAGS.learning_rate, val_loss,
+                        used_time, "nnet rejected"))
+                restore_from_ckpt(sess, saver)
+                # Reducing learning rate.
+                sess.run(reduce_learning_rate)
+
             # add a blank line for log readability
             print()
             sys.stdout.flush()
-
-            loss_prev = eval_one_epoch(sess, coord, valid_loss, dataset_valid.num_batches)
-            tf.logging.info("CROSSVAL PRERUN AVG.LOSS %.4f\n" % loss_prev)
-
-            for epoch in xrange(FLAGS.max_epochs):
-                # Train one epoch
-                time_start = time.time()
-                tr_loss = train_one_epoch(sess, coord, summary_writer, merged_all, global_step,
-                                          train_step, train_loss, dataset_train.num_batches)
-                time_end = time.time()
-                used_time = time_end - time_start
-
-                # Validate one epoch
-                val_loss = eval_one_epoch(sess, coord, valid_loss, dataset_valid.num_batches)
-
-                # Determine checkpoint path
-                FLAGS.learning_rate = sess.run(learning_rate)
-                cptk_name = 'nnet_iter%d_lrate%g_tr%.4f_cv%.4f' % (
-                    epoch + 1, FLAGS.learning_rate, tr_loss, val_loss)
-                checkpoint_path = os.path.join(FLAGS.save_dir, "nnet", cptk_name)
-
-                # accept or reject new parameters
-                if val_loss < loss_prev:
-                    saver.save(sess, checkpoint_path)
-                    # logging training loss along with validation loss
-                    tf.logging.info(
-                        "ITERATION %d: TRAIN AVG.LOSS %.4f, (lrate%g) "
-                        "CROSSVAL AVG.LOSS %.4f, TIME USED %.2f, %s" % (
-                            epoch + 1, tr_loss, FLAGS.learning_rate, val_loss,
-                            used_time, "nnet accepted"))
-                    loss_prev = val_loss
-                else:
-                    tf.logging.info(
-                        "ITERATION %d: TRAIN AVG.LOSS %.4f, (lrate%g) "
-                        "CROSSVAL AVG.LOSS %.4f, TIME USED %.2f, %s" % (
-                            epoch + 1, tr_loss, FLAGS.learning_rate, val_loss,
-                            used_time, "nnet rejected"))
-                    restore_from_ckpt(sess, saver)
-                    # Reducing learning rate.
-                    sess.run(reduce_learning_rate)
-
-                # add a blank line for log readability
-                print()
-                sys.stdout.flush()
-
-        except Exception, e:
-            # Report exceptions to the coordinator.
-            coord.request_stop(e)
-        finally:
-            # Terminate as usual.  It is innocuous to request stop twice.
-            coord.request_stop()
-            coord.join(threads)
 
 
 def decode():
     """Run the decoding of the acoustic or duration model."""
 
     with tf.device('/cpu:0'):
-        dataset_test = datasets.SequenceDataset(
+        dataset_test = SequenceDataset(
             subset="test",
             config_dir=FLAGS.config_dir,
             data_dir=FLAGS.data_dir,
             batch_size=1,
             input_size=FLAGS.input_dim,
             output_size=FLAGS.output_dim,
-            num_enqueuing_threads=1,
-            num_epochs=1,
             infer=True,
             name="dataset_test")
 
@@ -277,12 +275,15 @@ def decode():
             rnn_output=FLAGS.rnn_output,
             cnn_output=FLAGS.cnn_output,
             look_ahead=FLAGS.look_ahead,
+            mdn_output=FLAGS.mdn_output,
+            mix_num=FLAGS.mix_num,
             name="tf_model")
 
         # Build the testing model and get test output sequence.
-        test_input_sequence, test_length = dataset_test()
+        test_iterator = dataset_test()
         test_output_sequence_logits, test_final_state = model(
-            test_input_sequence, test_length)
+            test_iterator.input_sequence,
+            test_iterator.input_sequence_length)
 
     show_all_variables()
 
@@ -292,33 +293,36 @@ def decode():
     # Decode.
     with tf.Session() as sess:
         # Run init
-        sess.run(tf.group(tf.global_variables_initializer(),
-                          tf.local_variables_initializer()))
+        sess.run(tf.global_variables_initializer())
 
         if not restore_from_ckpt(sess, saver): sys.exit(-1)
 
-        coord = tf.train.Coordinator()
-        threads = tf.train.start_queue_runners(sess=sess, coord=coord)
-
         # Read cmvn to do reverse mean variance normalization
         cmvn = np.load(os.path.join(FLAGS.data_dir, "train_cmvn.npz"))
-        try:
-            used_time_sum = frames_sum = 0.0
-            for batch in xrange(dataset_test.num_batches):
-                if coord.should_stop():
-                    break
+
+        sess.run(test_iterator.initializer)
+
+        num_batches = 0
+        used_time_sum = frames_sum = 0.0
+        while True:
+            try:
                 time_start = time.time()
-                logits, frames = sess.run([test_output_sequence_logits, test_length])
+                logits, frames = sess.run([test_output_sequence_logits,
+                                           test_iterator.input_sequence_length])
                 time_end = time.time()
+
                 used_time = time_end - time_start
                 used_time_sum += used_time
                 frames_sum += frames[0]
+
                 # Squeeze batch dimension.
                 logits = logits.squeeze()
+
                 if FLAGS.mdn_output:
                     out_pi = logits[:, : FLAGS.mix_num]
                     out_mu = logits[:, FLAGS.mix_num : (FLAGS.mix_num + FLAGS.mix_num * FLAGS.output_dim)]
                     out_sigma = logits[:, (FLAGS.mix_num + FLAGS.mix_num * FLAGS.output_dim) :]
+
                     max_index_pi = out_pi.argmax(axis=1)
                     result_mu = []
                     for i in xrange(out_mu.shape[0]):
@@ -326,24 +330,25 @@ def decode():
                         end_index = (max_index_pi[i] + 1) * FLAGS.output_dim
                         result_mu.append(out_mu[i, beg_index:end_index])
                     logits = np.vstack(result_mu)
+
                 sequence = logits * cmvn["stddev_labels"] + cmvn["mean_labels"]
+
                 out_dir_name = os.path.join(FLAGS.save_dir, "test", "cmp")
                 out_file_name =os.path.basename(
-                    dataset_test.tfrecords_lst[batch]).split('.')[0] + ".cmp"
+                    dataset_test.tfrecords_lst[num_batches]).split('.')[0] + ".cmp"
                 out_path = os.path.join(out_dir_name, out_file_name)
                 write_binary_file(sequence, out_path, with_dim=False)
                 #np.savetxt(out_path, sequence, fmt="%f")
+
                 tf.logging.info(
-                    "writing inferred cmp to %s (%d frames in %f seconds)" % (out_path, frames[0], used_time))
-        except Exception, e:
-            # Report exceptions to the coordinator.
-            coord.request_stop(e)
-        finally:
-            # Terminate as usual.  It is innocuous to request stop twice.
-            tf.logging.info("Done decoding -- epoch limit reached "
-                            "(%d frames per second)" % int(frames_sum / used_time_sum))
-            coord.request_stop()
-            coord.join(threads)
+                    "writing inferred cmp to %s (%d frames in %.4f seconds)" % (
+                        out_path, frames[0], used_time))
+                num_batches += 1
+            except tf.errors.OutOfRangeError:
+                break
+
+        tf.logging.info("Done decoding -- epoch limit reached (%d "
+                        "frames per second)" % int(frames_sum / used_time_sum))
 
 
 def main(_):

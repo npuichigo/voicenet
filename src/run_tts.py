@@ -116,7 +116,7 @@ def train():
         num_threads=FLAGS.num_threads,
         use_bucket=True,
         infer=False,
-        name="dataset_train")
+        name="dataset_valid")
 
     model = TfModel(
         rnn_cell=FLAGS.rnn_cell,

@@ -78,7 +78,7 @@ if [ $stage -le 1 ]; then
   [ ! -e $dir ] && mkdir -p $dir
   [ ! -e $dir/nnet ] && mkdir -p $dir/nnet
   echo "Training nnet"
-  CUDA_VISIBLE_DEVICES=0 TF_CPP_MIN_LOG_LEVEL=1 python $voicenet_dir/src/run_tts.py --save_dir=$dir "$@"
+  CUDA_VISIBLE_DEVICES=0 TF_CPP_MIN_LOG_LEVEL=2 python $voicenet_dir/src/run_tts.py --save_dir=$dir "$@"
 fi
 
 # Decode nnet

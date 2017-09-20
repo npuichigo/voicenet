@@ -25,11 +25,12 @@ import sys
 import sonnet as snt
 import tensorflow as tf
 
-class BatchedInput(
-    collections.namedtuple("BatchedInput",
-                          ("initializer", "input_sequence", "target_sequence",
-                           "input_sequence_length", "target_sequence_length"))):
+
+class BatchedDataset(
+    collections.namedtuple("BatchedDataset",
+                          ("batched_dataset", "num_batches", "tfrecords_lst"))):
     pass
+
 
 class SequenceDataset(snt.AbstractModule):
     """Sequence dataset provider."""
@@ -132,16 +133,12 @@ class SequenceDataset(snt.AbstractModule):
                     window_size=self._batch_size)
             else:
                 batched_dataset = batching_func(dataset)
-            batched_iter = batched_dataset.make_initializable_iterator()
-            (input_seq, input_seq_len, target_seq, target_seq_len) = (
-                batched_iter.get_next())
 
-            return BatchedInput(
-                initializer=batched_iter.initializer,
-                input_sequence=input_seq,
-                input_sequence_length=input_seq_len,
-                target_sequence=target_seq,
-                target_sequence_length=target_seq_len)
+            return BatchedDataset(
+                batched_dataset=batched_dataset,
+                num_batches=self.num_batches,
+                tfrecords_lst=self.tfrecords_lst)
+
         else:
             def _parse_function(serialized_example):
                 sequence_features = {
@@ -170,15 +167,11 @@ class SequenceDataset(snt.AbstractModule):
                         tf.TensorShape([])))                        # input_len
 
             batched_dataset = batching_func(dataset)
-            batched_iter = batched_dataset.make_initializable_iterator()
-            (input_seq, input_seq_len) = batched_iter.get_next()
 
-            return BatchedInput(
-                initializer=batched_iter.initializer,
-                input_sequence=input_seq,
-                input_sequence_length=input_seq_len,
-                target_sequence=None,
-                target_sequence_length=None)
+            return BatchedDataset(
+                batched_dataset=batched_dataset,
+                num_batches=self.num_batches,
+                tfrecords_lst=self.tfrecords_lst)
 
     def _read_config_file(self, name):
         file_name = os.path.join(self._config_dir, name + ".lst")

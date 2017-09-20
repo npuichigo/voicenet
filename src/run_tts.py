@@ -104,7 +104,7 @@ def train():
         num_threads=FLAGS.num_threads,
         use_bucket=True,
         infer=False,
-        name="dataset_train")
+        name="dataset_train")()
 
     dataset_valid = SequenceDataset(
         subset="valid",
@@ -116,7 +116,7 @@ def train():
         num_threads=FLAGS.num_threads,
         use_bucket=True,
         infer=False,
-        name="dataset_valid")
+        name="dataset_valid")()
 
     model = TfModel(
         rnn_cell=FLAGS.rnn_cell,
@@ -132,32 +132,22 @@ def train():
         mix_num=FLAGS.mix_num,
         name="tf_model")
 
-    # Build the training model and get the training loss.
-    train_iterator = dataset_train()
-    train_output_sequence_logits, train_final_state = model(
-        train_iterator.input_sequence,
-        train_iterator.input_sequence_length)
-    train_loss = model.cost(
-        train_output_sequence_logits,
-        train_iterator.target_sequence,
-        train_iterator.target_sequence_length)
-    tf.summary.scalar('train_loss', train_loss)
+    # Build a reinitializable iterator for both dataset_train and dataset_valid.
+    iterator = tf.contrib.data.Iterator.from_structure(
+        dataset_train.batched_dataset.output_types,
+        dataset_train.batched_dataset.output_shapes)
+    (input_sequence, input_sequence_length,
+     target_sequence, target_sequence_length) = iterator.get_next()
 
-    # Get the validation loss.
-    valid_iterator = dataset_valid()
-    valid_output_sequence_logits, valid_final_state = model(
-        valid_iterator.input_sequence,
-        valid_iterator.input_sequence_length)
-    valid_loss = model.cost(
-        valid_output_sequence_logits,
-        valid_iterator.target_sequence,
-        valid_iterator.target_sequence_length)
+    training_init_op = iterator.make_initializer(dataset_train.batched_dataset)
+    validation_init_op = iterator.make_initializer(dataset_valid.batched_dataset)
 
-    # Set up optimizer with global norm clipping.
-    trainable_variables = tf.trainable_variables()
-    grads, _ = tf.clip_by_global_norm(
-        tf.gradients(train_loss, trainable_variables),
-        FLAGS.max_grad_norm)
+    # Build the model and get the loss.
+    output_sequence_logits, train_final_state = model(
+        input_sequence, input_sequence_length)
+    loss = model.cost(
+        output_sequence_logits, target_sequence, target_sequence_length)
+    tf.summary.scalar("loss", loss)
 
     learning_rate = tf.get_variable(
         "learning_rate",
@@ -176,7 +166,13 @@ def train():
         trainable=False,
         collections=[tf.GraphKeys.GLOBAL_VARIABLES, tf.GraphKeys.GLOBAL_STEP])
 
+   # Set up optimizer with global norm clipping.
+    trainable_variables = tf.trainable_variables()
     optimizer = tf.train.AdamOptimizer(learning_rate)
+    grads, _ = tf.clip_by_global_norm(
+        tf.gradients(loss, trainable_variables),
+        FLAGS.max_grad_norm)
+
     train_step = optimizer.apply_gradients(
         zip(grads, trainable_variables),
         global_step=global_step)
@@ -203,22 +199,22 @@ def train():
         print()
         sys.stdout.flush()
 
-        sess.run(valid_iterator.initializer)
-        loss_prev = eval_one_epoch(sess, valid_loss, dataset_valid.num_batches)
+        sess.run(validation_init_op)
+        loss_prev = eval_one_epoch(sess, loss, dataset_valid.num_batches)
         tf.logging.info("CROSSVAL PRERUN AVG.LOSS %.4f\n" % loss_prev)
 
         for epoch in xrange(FLAGS.max_epochs):
             # Train one epoch
             time_start = time.time()
-            sess.run(train_iterator.initializer)
+            sess.run(training_init_op)
             tr_loss = train_one_epoch(sess, summary_writer, merged_all, global_step,
-                                      train_step, train_loss, dataset_train.num_batches)
+                                      train_step, loss, dataset_train.num_batches)
             time_end = time.time()
             used_time = time_end - time_start
 
             # Validate one epoch
-            sess.run(valid_iterator.initializer)
-            val_loss = eval_one_epoch(sess, valid_loss, dataset_valid.num_batches)
+            sess.run(validation_init_op)
+            val_loss = eval_one_epoch(sess, loss, dataset_valid.num_batches)
 
             # Determine checkpoint path
             FLAGS.learning_rate = sess.run(learning_rate)
@@ -263,7 +259,7 @@ def decode():
             input_size=FLAGS.input_dim,
             output_size=FLAGS.output_dim,
             infer=True,
-            name="dataset_test")
+            name="dataset_test")()
 
         model = TfModel(
             rnn_cell=FLAGS.rnn_cell,
@@ -280,10 +276,10 @@ def decode():
             name="tf_model")
 
         # Build the testing model and get test output sequence.
-        test_iterator = dataset_test()
+        test_iterator = dataset_test.batched_dataset.make_one_shot_iterator()
+        input_sequence, input_sequence_length = test_iterator.get_next()
         test_output_sequence_logits, test_final_state = model(
-            test_iterator.input_sequence,
-            test_iterator.input_sequence_length)
+            input_sequence, input_sequence_length)
 
     show_all_variables()
 
@@ -300,20 +296,18 @@ def decode():
         # Read cmvn to do reverse mean variance normalization
         cmvn = np.load(os.path.join(FLAGS.data_dir, "train_cmvn.npz"))
 
-        sess.run(test_iterator.initializer)
-
         num_batches = 0
         used_time_sum = frames_sum = 0.0
         while True:
             try:
                 time_start = time.time()
-                logits, frames = sess.run([test_output_sequence_logits,
-                                           test_iterator.input_sequence_length])
+                logits = sess.run(test_output_sequence_logits)
                 time_end = time.time()
 
                 used_time = time_end - time_start
                 used_time_sum += used_time
-                frames_sum += frames[0]
+                frame_num = logits.shape[1]
+                frames_sum += frame_num
 
                 # Squeeze batch dimension.
                 logits = logits.squeeze()
@@ -342,7 +336,7 @@ def decode():
 
                 tf.logging.info(
                     "writing inferred cmp to %s (%d frames in %.4f seconds)" % (
-                        out_path, frames[0], used_time))
+                        out_path, frame_num, used_time))
                 num_batches += 1
             except tf.errors.OutOfRangeError:
                 break

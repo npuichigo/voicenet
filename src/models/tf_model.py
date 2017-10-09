@@ -23,9 +23,6 @@ import sys
 import sonnet as snt
 import tensorflow as tf
 
-from tensorflow.contrib.rnn.python.ops import rnn
-from models.quasi_rnn import QuasiRNN
-
 
 class TfModel(snt.AbstractModule):
     """A deep RNN model, for use of acoustic or duration modeling."""
@@ -154,7 +151,7 @@ class TfModel(snt.AbstractModule):
                 sequence_length=input_length,
                 dtype=tf.float32)
         else:
-            outputs = rnn.stack_bidirectional_dynamic_rnn(
+            outputs = tf.contrib.rnn.stack_bidirectional_dynamic_rnn(
                 cells_fw=self._unpack_cell(self._core["fw"]),
                 cells_bw=self._unpack_cell(self._core["bw"]),
                 inputs=output_sequence,

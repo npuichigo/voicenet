@@ -49,6 +49,8 @@ def main(_):
             rnn_output=FLAGS.rnn_output,
             cnn_output=FLAGS.cnn_output,
             look_ahead=FLAGS.look_ahead,
+            mdn_output=FLAGS.mdn_output,
+            mix_num=FLAGS.mix_num,
             name="tf_model")
 
         input_sequence = tf.placeholder(name='input', dtype=tf.float32,
@@ -150,6 +152,18 @@ if __name__ == '__main__':
         type=int,
         default=5,
         help='Number of steps to look ahead in cnn output layer.',
+    )
+    parser.add_argument(
+        '--mdn_output',
+        type=_str_to_bool,
+        default=False,
+        help='Whether to use mdn as the output layer.'
+    )
+    parser.add_argument(
+        '--mix_num',
+        type=int,
+        default=1,
+        help='Number of gaussian mixes in mdn output layer.',
     )
     parser.add_argument(
         '--output_file',

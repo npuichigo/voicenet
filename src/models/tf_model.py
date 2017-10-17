@@ -76,12 +76,6 @@ class TfModel(snt.AbstractModule):
                 activate_final=True,
                 name="mlp_input")
 
-            #self._quasi_rnns = [QuasiRNN(filter_width=2,
-            #                             num_hidden=256,
-            #                             pool_type='fo',
-            #                             name="qusi_rnn_{}".format(i))
-            #                    for i in xrange(4)]
-
             if not self._bidirectional:
                 self._rnns = [
                     self._cell_fn(self._num_hidden)
@@ -136,13 +130,8 @@ class TfModel(snt.AbstractModule):
             `[truncation_length, batch_size, output_size]`, and the
             final state of the unrolled core,.
         """
-
         batch_input_module = snt.BatchApply(self._input_module)
         output_sequence = batch_input_module(input_sequence)
-
-        #for layer_id in xrange(2):
-        #    quasi_rnn = self._quasi_rnns[layer_id]
-        #    output_sequence, final_state = quasi_rnn(output_sequence, input_length)
 
         if not self._bidirectional:
             output_sequence, final_state = tf.nn.dynamic_rnn(

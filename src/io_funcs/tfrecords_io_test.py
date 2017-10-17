@@ -133,9 +133,11 @@ class TfrecordsIoTest(tf.test.TestCase):
             num_threads=FLAGS.num_threads,
             use_bucket=True,
             infer=False,
-            name="sequence_dataset")
+            name="sequence_dataset")()
 
-        iterator = dataset_valid()
+        iterator = dataset_valid.batched_dataset.make_initializable_iterator()
+        (input_sequence, input_sequence_length,
+         target_sequence, target_sequence_length) = iterator.get_next()
 
         sess = tf.Session()
         sess.run(tf.global_variables_initializer())
@@ -146,10 +148,10 @@ class TfrecordsIoTest(tf.test.TestCase):
             while True:
                 try:
                     input_seq, input_seq_len, target_seq, target_seq_len = sess.run(
-                        [iterator.input_sequence,
-                         iterator.input_sequence_length,
-                         iterator.target_sequence,
-                         iterator.target_sequence_length])
+                        [input_sequence,
+                         input_sequence_length,
+                         target_sequence,
+                         target_sequence_length])
                     tf.logging.info('inputs shape : '+ str(input_seq.shape))
                     tf.logging.info('actual inputs length : '+ str(input_seq_len))
                     tf.logging.info('labels shape : ' + str(target_seq.shape))
@@ -167,19 +169,18 @@ class TfrecordsIoTest(tf.test.TestCase):
             input_size=FLAGS.input_dim,
             output_size=FLAGS.output_dim,
             infer=True,
-            name="sequence_dataset")
+            name="sequence_dataset")()
 
-        iterator = dataset_test()
+        iterator = dataset_test.batched_dataset.make_one_shot_iterator()
+        input_sequence, input_sequence_length = iterator.get_next()
 
         sess = tf.Session()
         sess.run(tf.global_variables_initializer())
 
-        sess.run(iterator.initializer)
         while True:
             try:
                 input_seq, input_seq_len = sess.run(
-                    [iterator.input_sequence,
-                     iterator.input_sequence_length])
+                    [input_sequence, input_sequence_length])
                 tf.logging.info('inputs shape : '+ str(input_seq.shape))
                 tf.logging.info('actual inputs length : '+ str(input_seq_len))
             except tf.errors.OutOfRangeError:
@@ -197,7 +198,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--input_dim',
         type=int,
-        default=425,
+        default=145,
         help='The dimension of inputs.'
     )
     parser.add_argument(

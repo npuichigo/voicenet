@@ -4,13 +4,23 @@ based acoustic model quickly in your experiments, and owing to the deployment
 capability of tensorflow, we think it's easy to deploy new  algorithms and 
 experiments online for serving. 
 
-## Installation instructions
+## Installation Instructions
 
-To install voicenet, you will need to install tensorflow>=v1.1.0 and sonnet.
+To install voicenet, you will need to install tensorflow>=v1.2.0 and sonnet.
 *See [Installing dependencies](https://github.com/npuichigo/voicenet/blob/master/INSTALL.md) for instructions on how to install all 
 the dependencies needed to use our framework.*
 
-## Why we introduce sonnet
+## Getting Started
+
+1.Clone this repository with `git clone https://github.com/npuichigo/voicenet.git`
+2.Go to `voicenet/egs/slt_arctic/` and run the script `run.sh`
+3.For your own dataset, just make a new directory under `voicenet/egs/`, copy `voicenet/egs/local` and `voicenet/egs/run.sh` to the
+new workspace
+
+**WARNING**:You should change the training parameters for your own dataset. For the purpose of demostration, 
+`batch_size` is set to one in `voicenet/egs/slt_arctic/`.
+
+## Why We Introduce Sonnet
 
 On training acoustic models in speech synthesis, we commonly do one cross-validation
 iteration right after one training iteration, so variables reuse is important. However
@@ -35,6 +45,17 @@ model = LSTM(...)
 train_output = model(train_input)
 # variables are shared automatically
 valid_output = model(valid_output)
+```
+
+**IMPORTANT**:Starting in tensorflow 1.2, dataset iterator is added for reading data into tensorflow. In using tensorflow's dataset api, iterators of dataset_train and dataset_valid can be merged into one iterator, which can be switched between different datasets conveniently, so variable reuse is no longer needed. However, we still preserve sonnet dependence for its useful abstraction and features, see *General Principles of Sonnet* for details.
+
+```python
+model = LSTM(...)
+iterator = tf.contrib.data.Iterator.from_structure(
+    dataset_train.batched_dataset.output_types,
+    dataset_train.batched_dataset.output_shapes)
+input, _ = iterator.get_next()
+output = model(input)
 ```
 
 ## General Principles of Sonnet 

@@ -4,6 +4,12 @@ based acoustic model quickly in your experiments, and owing to the deployment
 capability of tensorflow, we think it's easy to deploy new  algorithms and 
 experiments online for serving. 
 
+* [Installation Instructions](#installation-instructions)
+* [Getting Started](#getting-started)
+* [Why We Introduce Sonnet](#why-we-introduce-sonnet)
+* [General Principles of Sonnet](#general-principles-of-sonnet)
+
+
 ## Installation Instructions
 
 To install voicenet, you will need to install tensorflow>=v1.2.0 and sonnet.

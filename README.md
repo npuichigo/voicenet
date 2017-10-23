@@ -1,4 +1,4 @@
-# Voicenet: Speech Synthesis Platform Based on Tensorflow and Sonnet
+# Voicenet: Speech Synthesis Platform
 * [Overview](#overview)
 * [Installation Instructions](#installation-instructions)
 * [Getting Started](#getting-started)

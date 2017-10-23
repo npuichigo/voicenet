@@ -12,9 +12,9 @@ the dependencies needed to use our framework.*
 
 ## Getting Started
 
-1.Clone this repository with `git clone https://github.com/npuichigo/voicenet.git`
-2.Go to `voicenet/egs/slt_arctic/` and run the script `run.sh`
-3.For your own dataset, just make a new directory under `voicenet/egs/`, copy `voicenet/egs/local` and `voicenet/egs/run.sh` to the
+1. Clone this repository with `git clone https://github.com/npuichigo/voicenet.git`
+2. Go to `voicenet/egs/slt_arctic/` and run the script `run.sh`
+3. For your own dataset, just make a new directory under `voicenet/egs/`, copy `voicenet/egs/local` and `voicenet/egs/run.sh` to the
 new workspace
 
 **WARNING**:You should change the training parameters for your own dataset. For the purpose of demostration, 

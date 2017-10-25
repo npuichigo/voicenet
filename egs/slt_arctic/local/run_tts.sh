@@ -64,11 +64,12 @@ if [ $stage -le 0 ]; then
     compute-cmvn-stats --binary=true scp:${data}/train_label.scp $dir/label_cmvn
     compute-cmvn-stats --binary=true scp:${data}/train_param.scp $dir/param_cmvn
     python $voicenet_dir/misc/scripts/convert_binary_cmvn_to_text.py ${dir}/param_cmvn
-
   else
+    # Tfrecords format
     [ ! -e $data/train ] && mkdir -p $data/train
     [ ! -e $data/valid ] && mkdir -p $data/valid
     [ ! -e $data/test ] && mkdir -p $data/test
+    # You should change the dimensions here to match your own dataset
     python ${voicenet_dir}/src/utils/convert_to_records_parallel.py --input_dim=425 --output_dim=75
   fi
 fi

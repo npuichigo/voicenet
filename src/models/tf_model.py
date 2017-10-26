@@ -162,7 +162,7 @@ class TfModel(snt.AbstractModule):
                                              [[0, 0], [0, 1], [0, 0]],
                                              "SYMMETRIC")
             else:
-                for i in xrange((self._look_ahead - 1) / 2):
+                for i in xrange(int((self._look_ahead - 1) / 2)):
                     output_sequence = tf.pad(output_sequence,
                                              [[0, 0], [1, 1], [0, 0]],
                                              "SYMMETRIC")

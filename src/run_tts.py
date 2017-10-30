@@ -179,7 +179,7 @@ def train():
 
     show_all_variables()
     merged_all = tf.summary.merge_all()
-    saver = tf.train.Saver(trainable_variables, max_to_keep=FLAGS.max_epochs)
+    saver = tf.train.Saver(max_to_keep=FLAGS.max_epochs)
 
     # Train.
     config = tf.ConfigProto()
@@ -283,8 +283,7 @@ def decode():
 
     show_all_variables()
 
-    trainable_variables = tf.trainable_variables()
-    saver = tf.train.Saver(trainable_variables, max_to_keep=FLAGS.max_epochs)
+    saver = tf.train.Saver()
 
     # Decode.
     with tf.Session() as sess:

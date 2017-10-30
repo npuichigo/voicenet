@@ -310,7 +310,7 @@ def decode():
                 frames_sum += frame_num
 
                 # Squeeze batch dimension.
-                logits = logits.squeeze()
+                logits = logits.squeeze(axis=0)
 
                 if FLAGS.mdn_output:
                     out_pi = logits[:, : FLAGS.mix_num]

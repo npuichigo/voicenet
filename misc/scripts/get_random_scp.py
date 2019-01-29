@@ -48,10 +48,10 @@ lists_label = label_scp.readlines()
 lists_param = param_scp.readlines()
 
 if len(lists_label) != len(lists_param):
-    print "scp files have unequal lengths"
+    print("scp files have unequal lengths")
     sys.exit(1)
 
-lists = range(len(lists_label))
+lists = list(range(len(lists_label)))
 random.seed(0)
 random.shuffle(lists)
 
@@ -62,7 +62,7 @@ train_lists = sorted(lists[: train_num])
 valid_lists = sorted(lists[train_num: (train_num + valid_num)])
 test_lists = sorted(lists[(train_num + valid_num):])
 
-for i in xrange(len(lists)):
+for i in range(len(lists)):
     line_label = lists_label[i]
     line_param = lists_param[i]
     line_lst = line_label.strip() + ' ' + line_param.split()[1] + '\n'

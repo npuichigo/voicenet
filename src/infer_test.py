@@ -25,6 +25,8 @@ import time
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.contrib.rnn import *
+
 
 def load_graph(model_file):
     graph = tf.Graph()
@@ -41,14 +43,16 @@ def load_graph(model_file):
 if __name__ == "__main__":
     tf.logging.set_verbosity(tf.logging.INFO)
 
-    model_file = "./frozen_acoustic.pb"
+    model_file = "frozen_acoustic.pb"
     input_layer = "input"
     output_layer = "output"
+    num_steps = 40
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--graph", help="graph/model to be executed")
     parser.add_argument("--input_layer", help="name of input layer")
     parser.add_argument("--output_layer", help="name of output layer")
+    parser.add_argument("--num_steps", help="number of inference steps to run")
     args = parser.parse_args()
 
     if args.graph:
@@ -57,9 +61,11 @@ if __name__ == "__main__":
         input_layer = args.input_layer
     if args.output_layer:
         output_layer = args.output_layer
+    if args.num_steps:
+        num_steps = args.num_steps
 
     graph = load_graph(model_file)
-    input_seq = np.random.rand(1000, 145).astype(np.float32)
+    input_seq = np.random.rand(1000, 425).astype(np.float32)
 
     input_name = "import/" + input_layer
     output_name = "import/" + output_layer
@@ -67,13 +73,20 @@ if __name__ == "__main__":
     output_operation = graph.get_operation_by_name(output_name);
 
     with tf.Session(graph=graph) as sess:
-        time_start = time.time()
+        # Warm up
         results = sess.run(output_operation.outputs[0],
                            {input_operation.outputs[0]: input_seq})
-        time_end = time.time()
+
+        time_used = 0.0
+        for i in range(num_steps):
+            time_start = time.time()
+            results = sess.run(output_operation.outputs[0],
+                               {input_operation.outputs[0]: input_seq})
+            time_end = time.time()
+            time_used += time_end - time_start
 
     tf.logging.info("Input shape: %s" % str(input_seq.shape))
     tf.logging.info("Output shape: %s " % str(results.shape))
 
     tf.logging.info(results)
-    tf.logging.info("Time used: %.3fs" % (time_end - time_start))
+    tf.logging.info("Time used: %.3fs" % (time_used / num_steps))

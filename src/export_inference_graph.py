@@ -24,8 +24,8 @@ import sys
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.python.platform import gfile
 from models.tf_model import TfModel
+from tensorflow.python.tools import freeze_graph
 from utils.utils import pp, show_all_variables
 
 # Basic model parameters as external flags.
@@ -41,9 +41,10 @@ def main(_):
     with tf.Graph().as_default() as graph:
         model = TfModel(
             rnn_cell=FLAGS.rnn_cell,
-            num_hidden=FLAGS.num_hidden,
             dnn_depth=FLAGS.dnn_depth,
+            dnn_num_hidden=FLAGS.dnn_num_hidden,
             rnn_depth=FLAGS.rnn_depth,
+            rnn_num_hidden=FLAGS.rnn_num_hidden,
             output_size=FLAGS.output_dim,
             bidirectional=FLAGS.bidirectional,
             rnn_output=FLAGS.rnn_output,
@@ -75,10 +76,38 @@ def main(_):
 
         show_all_variables()
 
-        graph_def = graph.as_graph_def()
-        with gfile.GFile(FLAGS.output_file, 'wb') as f:
-            f.write(graph_def.SerializeToString())
-            #tf.train.write_graph(graph_def, './', 'inf_graph.pbtxt')
+        #sess = tf.Session()
+        #sess.run(tf.global_variables_initializer())
+        ckpt = tf.train.get_checkpoint_state(FLAGS.checkpoint_path)
+        if ckpt:
+            saver = tf.train.Saver()
+            #saver.restore(sess, ckpt.model_checkpoint_path)
+        else:
+            tf.logging.warning("Cannot find checkpoint in {}".format(args.checkpoint))
+            sys.exit(-1)
+
+        freeze_graph.freeze_graph_with_def_protos(
+            input_graph_def=graph.as_graph_def(),
+            input_saver_def=saver.as_saver_def(),
+            input_checkpoint=ckpt.model_checkpoint_path,
+            output_node_names=FLAGS.output_node_name,
+            restore_op_name=None,
+            filename_tensor_name=None,
+            output_graph=FLAGS.output_file,
+            clear_devices=True,
+            initializer_nodes="",
+            variable_names_blacklist=None)
+
+        #output_graph_def = tf.graph_util.convert_variables_to_constants(
+        #    sess,  # The session is used to retrieve the weights
+        #    graph.as_graph_def(),  # The graph_def is used to retrieve the nodes
+        #    FLAGS.output_node_name.split(','),
+        #    # The output node names are used to select the usefull nodes
+        #    None,
+        #    None)
+
+        #with tf.gfile.GFile(FLAGS.output_file, "wb") as f:
+        #    f.write(output_graph_def.SerializeToString())
         tf.logging.info("Inference graph has been written to %s" % FLAGS.output_file)
 
 
@@ -108,7 +137,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--rnn_cell',
         type=str,
-        default='lstm',
+        default='fused_lstm',
         help='Rnn cell types including rnn, gru and lstm.'
     )
     parser.add_argument(
@@ -120,19 +149,25 @@ if __name__ == '__main__':
     parser.add_argument(
         '--dnn_depth',
         type=int,
-        default=3,
+        default=2,
         help='Number of layers of dnn model.'
+    )
+    parser.add_argument(
+        '--dnn_num_hidden',
+        type=int,
+        default=128,
+        help='Number of hidden units to use.'
     )
     parser.add_argument(
         '--rnn_depth',
         type=int,
-        default=2,
+        default=3,
         help='Number of layers of rnn model.'
     )
     parser.add_argument(
-        '--num_hidden',
+        '--rnn_num_hidden',
         type=int,
-        default=256,
+        default=64,
         help='Number of hidden units to use.'
     )
     parser.add_argument(
@@ -168,7 +203,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--output_file',
         type=str,
-        default='exp/acoustic/acoustic_inf_graph.pb',
+        default='exp/acoustic/frozen_acoustic.pb',
         help='Where to save the resulting file to.'
     )
     parser.add_argument(
@@ -176,6 +211,12 @@ if __name__ == '__main__':
         type=str,
         default='output',
         help='Name of output node.'
+    )
+    parser.add_argument(
+        '--checkpoint_path',
+        type=str,
+        required=True,
+        help='Name of model checkpoint path.'
     )
     parser.add_argument(
         '--data_dir',

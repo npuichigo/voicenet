@@ -76,12 +76,9 @@ def main(_):
 
         show_all_variables()
 
-        #sess = tf.Session()
-        #sess.run(tf.global_variables_initializer())
         ckpt = tf.train.get_checkpoint_state(FLAGS.checkpoint_path)
         if ckpt:
             saver = tf.train.Saver()
-            #saver.restore(sess, ckpt.model_checkpoint_path)
         else:
             tf.logging.warning("Cannot find checkpoint in {}".format(args.checkpoint))
             sys.exit(-1)
@@ -98,16 +95,6 @@ def main(_):
             initializer_nodes="",
             variable_names_blacklist=None)
 
-        #output_graph_def = tf.graph_util.convert_variables_to_constants(
-        #    sess,  # The session is used to retrieve the weights
-        #    graph.as_graph_def(),  # The graph_def is used to retrieve the nodes
-        #    FLAGS.output_node_name.split(','),
-        #    # The output node names are used to select the usefull nodes
-        #    None,
-        #    None)
-
-        #with tf.gfile.GFile(FLAGS.output_file, "wb") as f:
-        #    f.write(output_graph_def.SerializeToString())
         tf.logging.info("Inference graph has been written to %s" % FLAGS.output_file)
 
 

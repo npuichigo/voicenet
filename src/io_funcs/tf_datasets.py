@@ -22,7 +22,6 @@ import collections
 import math
 import os
 import sys
-import sonnet as snt
 import tensorflow as tf
 
 
@@ -32,7 +31,7 @@ class BatchedDataset(
     pass
 
 
-class SequenceDataset(snt.AbstractModule):
+class SequenceDataset(object):
     """Sequence dataset provider."""
 
     TRAIN = "train"
@@ -47,7 +46,7 @@ class SequenceDataset(snt.AbstractModule):
             raise ValueError("subset should be %s, %s, or %s. Received %s instead."
                              % (self.TRAIN, self.VALID, self.TEST, subset))
 
-        super(SequenceDataset, self).__init__(name=name)
+        super(SequenceDataset, self).__init__()
 
         self._config_dir = config_dir
         self._data_dir = data_dir
@@ -67,7 +66,7 @@ class SequenceDataset(snt.AbstractModule):
         else:
             self._output_buffer_size = output_buffer_size
 
-    def _build(self):
+    def __call__(self):
         if not self._infer:
             def _parse_function(serialized_example):
                 sequence_features = {
@@ -80,21 +79,17 @@ class SequenceDataset(snt.AbstractModule):
                     serialized_example, sequence_features=sequence_features)
                 return sequence['inputs'], sequence['labels']
 
-            dataset = tf.contrib.data.TFRecordDataset(self._tfrecords_lst)
+            dataset = tf.data.TFRecordDataset(self._tfrecords_lst)
             # Parse tfrecords example.
             dataset = dataset.map(
                 _parse_function,
-                num_threads=self._num_threads,
-                output_buffer_size = self._output_buffer_size)
+                num_parallel_calls=self._num_threads).prefetch(self._output_buffer_size)
             # Randomly shuffle.
-            dataset = dataset.shuffle(
-                self._output_buffer_size,
-                seed=tf.random_uniform((), maxval=777, dtype=tf.int64))
+            dataset = dataset.shuffle(self._output_buffer_size)
             # Add in sequence lengths.
             dataset = dataset.map(
                 lambda src, tgt: (src, tf.shape(src)[0], tgt, tf.shape(tgt)[0]),
-                num_threads=self._num_threads,
-                output_buffer_size = self._output_buffer_size)
+                num_parallel_calls=self._num_threads).prefetch(self._output_buffer_size)
 
             # Dynamic padding.
             def batching_func(x):
@@ -127,10 +122,11 @@ class SequenceDataset(snt.AbstractModule):
                 def reduce_func(unused_key, windowed_data):
                     return batching_func(windowed_data)
 
-                batched_dataset = dataset.group_by_window(
-                    key_func=key_func,
-                    reduce_func=reduce_func,
-                    window_size=self._batch_size)
+                batched_dataset = dataset.apply(
+                    tf.contrib.data.group_by_window(
+                        key_func=key_func,
+                        reduce_func=reduce_func,
+                        window_size=self._batch_size))
             else:
                 batched_dataset = batching_func(dataset)
 
@@ -149,7 +145,7 @@ class SequenceDataset(snt.AbstractModule):
                     serialized_example, sequence_features=sequence_features)
                 return sequence['inputs']
 
-            dataset = tf.contrib.data.TFRecordDataset(self._tfrecords_lst)
+            dataset = tf.data.TFRecordDataset(self._tfrecords_lst)
             # Parse tfrecords example.
             dataset = dataset.map(_parse_function)
             # Add in sequence lengths.

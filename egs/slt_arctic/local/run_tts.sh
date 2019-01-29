@@ -55,7 +55,7 @@ if [ $stage -le 0 ]; then
     if $add_delta; then
       for x in train test val; do
       {
-        add-deltas --delta-window=1 "ark:${data}/${x}_param.ark" "ark,scp:${data}/${x}_param_delta.ark,${data}/${x}_param_delta.scp" 
+        add-deltas --delta-window=1 "ark:${data}/${x}_param.ark" "ark,scp:${data}/${x}_param_delta.ark,${data}/${x}_param_delta.scp"
       }
     done
     fi
@@ -79,7 +79,7 @@ if [ $stage -le 1 ]; then
   [ ! -e $dir ] && mkdir -p $dir
   [ ! -e $dir/nnet ] && mkdir -p $dir/nnet
   echo "Training nnet"
-  CUDA_VISIBLE_DEVICES=0 TF_CPP_MIN_LOG_LEVEL=2 python $voicenet_dir/src/run_tts.py --save_dir=$dir "$@"
+  python $voicenet_dir/src/run_tts.py --save_dir=$dir "$@"
 fi
 
 # Decode nnet
@@ -101,6 +101,6 @@ fi
 if [ $stage -le 4 ]; then
   if $export_graph; then
     echo "Exporting graph"
-    CUDA_VISIBLE_DEVICES= TF_CPP_MIN_LOG_LEVEL=1 python $voicenet_dir/src/export_inference_graph.py  --output_file=$dir/acoustic_inf_graph.pb "$@"
+    CUDA_VISIBLE_DEVICES= TF_CPP_MIN_LOG_LEVEL=1 python $voicenet_dir/src/export_inference_graph.py  --output_file=$dir/frozen_acoustic.pb --checkpoint_path=$dir/nnet "$@"
   fi
 fi

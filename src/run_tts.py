@@ -23,12 +23,11 @@ import argparse
 import numpy as np
 import os
 import sys
-import sonnet as snt
 import time
 import tensorflow as tf
 
-from models.tf_model import TfModel
 from io_funcs.tf_datasets import SequenceDataset
+from models.tf_model import TfModel
 from utils.utils import pp, show_all_variables, write_binary_file, ProgressBar
 
 # Basic model parameters as external flags.
@@ -120,9 +119,10 @@ def train():
 
     model = TfModel(
         rnn_cell=FLAGS.rnn_cell,
-        num_hidden=FLAGS.num_hidden,
         dnn_depth=FLAGS.dnn_depth,
+        dnn_num_hidden=FLAGS.dnn_num_hidden,
         rnn_depth=FLAGS.rnn_depth,
+        rnn_num_hidden=FLAGS.rnn_num_hidden,
         output_size=FLAGS.output_dim,
         bidirectional=FLAGS.bidirectional,
         rnn_output=FLAGS.rnn_output,
@@ -133,7 +133,7 @@ def train():
         name="tf_model")
 
     # Build a reinitializable iterator for both dataset_train and dataset_valid.
-    iterator = tf.contrib.data.Iterator.from_structure(
+    iterator = tf.data.Iterator.from_structure(
         dataset_train.batched_dataset.output_types,
         dataset_train.batched_dataset.output_shapes)
     (input_sequence, input_sequence_length,
@@ -145,7 +145,7 @@ def train():
     # Build the model and get the loss.
     output_sequence_logits, train_final_state = model(
         input_sequence, input_sequence_length)
-    loss = model.cost(
+    loss = model.loss(
         output_sequence_logits, target_sequence, target_sequence_length)
     tf.summary.scalar("loss", loss)
 
@@ -166,7 +166,7 @@ def train():
         trainable=False,
         collections=[tf.GraphKeys.GLOBAL_VARIABLES, tf.GraphKeys.GLOBAL_STEP])
 
-   # Set up optimizer with global norm clipping.
+    # Set up optimizer with global norm clipping.
     trainable_variables = tf.trainable_variables()
     optimizer = tf.train.AdamOptimizer(learning_rate)
     grads, _ = tf.clip_by_global_norm(
@@ -181,9 +181,9 @@ def train():
     merged_all = tf.summary.merge_all()
     saver = tf.train.Saver(max_to_keep=FLAGS.max_epochs)
 
-    # Train.
+    # Train
     config = tf.ConfigProto()
-    # prevent exhausting all the gpu memories
+    # Prevent exhausting all the gpu memories
     config.gpu_options.allow_growth = True
     with tf.Session(config=config) as sess:
         # Run init
@@ -203,7 +203,7 @@ def train():
         loss_prev = eval_one_epoch(sess, loss, dataset_valid.num_batches)
         tf.logging.info("CROSSVAL PRERUN AVG.LOSS %.4f\n" % loss_prev)
 
-        for epoch in xrange(FLAGS.max_epochs):
+        for epoch in range(FLAGS.max_epochs):
             # Train one epoch
             time_start = time.time()
             sess.run(training_init_op)
@@ -263,9 +263,10 @@ def decode():
 
         model = TfModel(
             rnn_cell=FLAGS.rnn_cell,
-            num_hidden=FLAGS.num_hidden,
             dnn_depth=FLAGS.dnn_depth,
+            dnn_num_hidden=FLAGS.dnn_num_hidden,
             rnn_depth=FLAGS.rnn_depth,
+            rnn_num_hidden=FLAGS.rnn_num_hidden,
             output_size=FLAGS.output_dim,
             bidirectional=FLAGS.bidirectional,
             rnn_output=FLAGS.rnn_output,
@@ -390,7 +391,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--rnn_cell',
         type=str,
-        default='lstm',
+        default='fused_lstm',
         help='Rnn cell types including rnn, gru and lstm.'
     )
     parser.add_argument(
@@ -402,19 +403,25 @@ if __name__ == '__main__':
     parser.add_argument(
         '--dnn_depth',
         type=int,
-        default=3,
+        default=2,
         help='Number of layers of dnn model.'
     )
     parser.add_argument(
         '--rnn_depth',
         type=int,
-        default=2,
+        default=3,
         help='Number of layers of rnn model.'
     )
     parser.add_argument(
-        '--num_hidden',
+        '--dnn_num_hidden',
         type=int,
-        default=256,
+        default=128,
+        help='Number of hidden units to use.'
+    )
+    parser.add_argument(
+        '--rnn_num_hidden',
+        type=int,
+        default=64,
         help='Number of hidden units to use.'
     )
     parser.add_argument(

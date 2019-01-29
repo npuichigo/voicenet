@@ -20,7 +20,6 @@ from __future__ import print_function
 
 # Dependency imports
 import sys
-import sonnet as snt
 import tensorflow as tf
 
 
@@ -68,7 +67,7 @@ class RecurrentPooling(tf.nn.rnn_cell.RNNCell):
             raise ValueError('Pool type must be either f, fo or ifo.')
 
 
-class QuasiRNN(snt.AbstractModule):
+class QuasiRNN(object):
     """Implementation of Quasi-Recurrent Neural Network"""
 
     def __init__(self, filter_width, num_hidden, pool_type='fo', zone_out=0.0,
@@ -83,7 +82,7 @@ class QuasiRNN(snt.AbstractModule):
             name: Name of the module.
         """
 
-        super(QuasiRNN, self).__init__(name=name)
+        super(QuasiRNN, self).__init__()
 
         self._filter_width = filter_width
         self._num_hidden = num_hidden
@@ -91,17 +90,16 @@ class QuasiRNN(snt.AbstractModule):
         self._pool_type = pool_type
         self._zone_out = zone_out
 
-        with self._enter_variable_scope():
-            self._cnn_component = snt.Conv1D(
-                output_channels=self._num_hidden * (len(self._pool_type) + 1),
-                kernel_shape=self._filter_width,
-                padding="VALID",
-                name="cnn_component")
+        self._cnn_component = tf.layers.Conv1D(
+            filters=self._num_hidden * (len(self._pool_type) + 1),
+            kernel_size=self._filter_width,
+            padding="VALID",
+            name="cnn_component")
 
-            self._pooling_component = RecurrentPooling(self._num_hidden, self._pool_type)
+        self._pooling_component = RecurrentPooling(self._num_hidden, self._pool_type)
 
 
-    def _build(self, input_sequence, input_length):
+    def __call__(self, input_sequence, input_length):
         """Builds the quasi_rnn model sub-graph."""
 
         # Padding before apply convolution component.

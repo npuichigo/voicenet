@@ -21,14 +21,13 @@ from __future__ import print_function
 import sys
 import os
 import math
-import sonnet as snt
 import tensorflow as tf
 
 sys.path.append(os.path.dirname(sys.path[0]))
 from io_funcs.tfrecords_io import get_padded_batch, get_seq2seq_batch
 
 
-class SequenceDataset(snt.AbstractModule):
+class SequenceDataset(object):
     """Sequence dataset provider."""
 
     TRAIN = "train"
@@ -42,7 +41,7 @@ class SequenceDataset(snt.AbstractModule):
             raise ValueError("subset should be %s, %s, or %s. Received %s instead."
                              % (self.TRAIN, self.VALID, self.TEST, subset))
 
-        super(SequenceDataset, self).__init__(name=name)
+        super(SequenceDataset, self).__init__()
 
         self._config_dir = config_dir
         self._data_dir = data_dir
@@ -55,7 +54,7 @@ class SequenceDataset(snt.AbstractModule):
         self._tfrecords_lst = self.read_config_file(subset)
         self._num_batches = int(math.ceil(len(self._tfrecords_lst) / float(self._batch_size)))
 
-    def _build(self):
+    def __call__(self):
         if not self._infer:
             input_sequence, target_sequence, length = get_padded_batch(
                 file_list=self._tfrecords_lst,

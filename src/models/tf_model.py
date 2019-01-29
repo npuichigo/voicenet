@@ -20,23 +20,23 @@ from __future__ import print_function
 
 # Dependency imports
 import sys
-import sonnet as snt
 import tensorflow as tf
 
 
-class TfModel(snt.AbstractModule):
+class TfModel(object):
     """A deep RNN model, for use of acoustic or duration modeling."""
 
-    def __init__(self, rnn_cell, num_hidden, dnn_depth, rnn_depth, output_size,
-                 bidirectional=False, rnn_output=False, cnn_output=False,
+    def __init__(self, rnn_cell, dnn_depth, dnn_num_hidden, rnn_depth, rnn_num_hidden,
+                 output_size, bidirectional=False, rnn_output=False, cnn_output=False,
                  look_ahead=5, mdn_output=False, mix_num=1, name="acoustic_model"):
         """Constructs a TfModel.
 
         Args:
             rnn_cell: Type of rnn cell including rnn, gru and lstm
-            num_hidden: Number of hidden units in each RNN layer.
             dnn_depth: Number of DNN layers.
+            dnn_num_hidden: Number of hidden units in each DNN layer.
             rnn_depth: Number of RNN layers.
+            rnn_num_hidden: Number of hidden units in each RNN layer.
             output_size: Size of the output layer on top of the DeepRNN.
             bidirectional: Whether to use bidirectional rnn.
             rnn_output: Whether to use ROL(Rnn Output Layer).
@@ -47,20 +47,24 @@ class TfModel(snt.AbstractModule):
             name: Name of the module.
         """
 
-        super(TfModel, self).__init__(name=name)
+        super(TfModel, self).__init__()
 
-        if rnn_cell == 'rnn':
-            self._cell_fn = tf.nn.rnn_cell.BasicRNNCell
-        elif rnn_cell == 'gru':
-            self._cell_fn = tf.nn.rnn_cell.GRUCell
-        elif rnn_cell == 'lstm':
-            self._cell_fn = tf.nn.rnn_cell.LSTMCell
+        if rnn_cell == "rnn":
+            self._cell_fn = tf.contrib.rnn.BasicRNNCell
+        elif rnn_cell == "gru":
+            self._cell_fn = tf.contrib.rnn.GRUBlockCellV2
+        elif rnn_cell == "lstm":
+            self._cell_fn =  tf.contrib.rnn.LSTMBlockCell
+        elif rnn_cell == "fused_lstm":
+            self._cell_fn = tf.contrib.rnn.LSTMBlockFusedCell
         else:
             raise ValueError("model type not supported: {}".format(rnn_cell))
 
-        self._num_hidden = num_hidden
+        self._rnn_cell = rnn_cell
         self._dnn_depth = dnn_depth
+        self._dnn_num_hidden = dnn_num_hidden
         self._rnn_depth = rnn_depth
+        self._rnn_num_hidden = rnn_num_hidden
         self._output_size = output_size
         self._bidirectional = bidirectional
         self._rnn_output = rnn_output
@@ -69,56 +73,80 @@ class TfModel(snt.AbstractModule):
         self._mdn_output = mdn_output
         self._mix_num = mix_num
 
-        with self._enter_variable_scope():
-            self._input_module = snt.nets.MLP(
-                output_sizes=[self._num_hidden] * self._dnn_depth,
-                activation=tf.nn.relu,
-                activate_final=True,
-                name="mlp_input")
+        self._input_module = [
+            tf.layers.Dense(units=self._dnn_num_hidden,
+                            activation=tf.nn.relu,
+                            name="linear_input_{}".format(i))
+            for i in range(self._dnn_depth)
+        ]
 
-            if not self._bidirectional:
+        if not self._bidirectional:
+            if rnn_cell == "fused_lstm":
                 self._rnns = [
-                    self._cell_fn(self._num_hidden)
+                    self._cell_fn(self._rnn_num_hidden,
+                                  name="{0}_{1}".format(rnn_cell, i))
                     for i in range(self._rnn_depth)
                 ]
-                self._core = tf.nn.rnn_cell.MultiRNNCell(self._rnns)
             else:
-                self._core = {
+                self._rnns = tf.nn.rnn_cell.MultiRNNCell([
+                    self._cell_fn(self._rnn_num_hidden,
+                                  name="{0}_{1}".format(rnn_cell, i))
+                    for i in range(self._rnn_depth)
+                ])
+        else:
+            if rnn_cell == "fused_lstm":
+                self._rnns = {
+                    "fw": [
+                        self._cell_fn(self._rnn_num_hidden,
+                                      name="{0}_fw_{1}".format(rnn_cell, i))
+                        for i in range(self._rnn_depth)
+                    ],
+                    "bw": [
+                        tf.contrib.rnn.TimeReversedFusedRNN(
+                            self._cell_fn(self._rnn_num_hidden,
+                                          name="{0}_bw_{1}".format(rnn_cell, i)))
+                        for i in range(self._rnn_depth)
+                    ],
+                }
+            else:
+                self._rnns = {
                     "fw": tf.nn.rnn_cell.MultiRNNCell([
-                        self._cell_fn(self._num_hidden)
+                        self._cell_fn(self._rnn_num_hidden,
+                                      name="{0}_fw_{1}".format(rnn_cell, i))
                         for i in range(self._rnn_depth)
                     ]),
                     "bw": tf.nn.rnn_cell.MultiRNNCell([
-                        self._cell_fn(self._num_hidden)
+                        self._cell_fn(self._num_hidden,
+                                      name="{0}_bw_{1}".format(rnn_cell, i))
                         for i in range(self._rnn_depth)
                     ]),
                 }
 
-            # If mdn output is used, output size should be mix_num * (2 * output_dim + 1).
-            if self._mdn_output:
-                output_size = self._mdn_output_size = self._mix_num * (2 * self._output_size + 1)
-            else:
-                output_size = self._output_size
+        # If mdn output is used, output size should be mix_num * (2 * output_dim + 1).
+        if self._mdn_output:
+            output_size = self._mdn_output_size = self._mix_num * (2 * self._output_size + 1)
+        else:
+            output_size = self._output_size
 
-            if self._rnn_output and self._cnn_output:
-                raise ValueError("rnn_output and cnn_output cannot be "
-                                 "specified at the same time.")
-            if self._rnn_output:
-                self._output_module = tf.nn.rnn_cell.BasicRNNCell(
-                    output_size, activation=tf.identity)
-            elif self._cnn_output:
-                self._output_module = {
-                    "linear": snt.Linear(output_size, name="linear"),
-                    "cnn": snt.Conv2D(
-                        output_channels=1,
-                        kernel_shape=(self._look_ahead, 1),
-                        padding="VALID",
-                        name="cnn_output")
-                }
-            else:
-                self._output_module = snt.Linear(output_size, name="linear_output")
+        if self._rnn_output and self._cnn_output:
+            raise ValueError("rnn_output and cnn_output cannot be "
+                             "specified at the same time.")
+        if self._rnn_output:
+            self._output_module = tf.contrib.rnn.BasicRNNCell(
+                output_size, activation=tf.identity)
+        elif self._cnn_output:
+            self._output_module = {
+                "linear": tf.layers.Dense(output_size, name="linear"),
+                "cnn": tf.layers.Conv2D(
+                    filters=1,
+                    kernel_size=(self._look_ahead, 1),
+                    padding="VALID",
+                    name="cnn_output")
+            }
+        else:
+            self._output_module = tf.layers.Dense(output_size, name="linear_output")
 
-    def _build(self, input_sequence, input_length):
+    def __call__(self, input_sequence, input_length):
         """Builds the deep LSTM model sub-graph.
 
         Args:
@@ -130,24 +158,64 @@ class TfModel(snt.AbstractModule):
             `[truncation_length, batch_size, output_size]`, and the
             final state of the unrolled core,.
         """
-        batch_input_module = snt.BatchApply(self._input_module)
-        output_sequence = batch_input_module(input_sequence)
+        output_sequence = input_sequence
+        for layer in self._input_module:
+            output_sequence = layer(output_sequence)
 
         if not self._bidirectional:
-            output_sequence, final_state = tf.nn.dynamic_rnn(
-                cell=self._core,
-                inputs=output_sequence,
-                sequence_length=input_length,
-                dtype=tf.float32)
+            if self._rnn_cell == 'fused_lstm':
+                output_sequence = tf.transpose(output_sequence, [1, 0, 2])
+
+                new_states = []
+                for cell in self._rnns:
+                    output_sequence, new_state = cell(
+                        inputs=output_sequence,
+                        sequence_length=input_length,
+                        dtype=tf.float32)
+                    new_states.append(new_state)
+
+                output_sequence = tf.transpose(output_sequence, [1, 0, 2])
+                final_state = tuple(new_states)
+            else:
+                output_sequence, final_state = tf.nn.dynamic_rnn(
+                    cell=self._rnns,
+                    inputs=output_sequence,
+                    sequence_length=input_length,
+                    dtype=tf.float32)
         else:
-            outputs = tf.contrib.rnn.stack_bidirectional_dynamic_rnn(
-                cells_fw=self._unpack_cell(self._core["fw"]),
-                cells_bw=self._unpack_cell(self._core["bw"]),
-                inputs=output_sequence,
-                sequence_length=input_length,
-                dtype=tf.float32)
-            output_sequence, final_state_fw, final_state_bw = outputs
-            final_state = (final_state_fw, final_state_bw)
+            if self._rnn_cell == 'fused_lstm':
+                output_sequence = tf.transpose(output_sequence, [1, 0, 2])
+
+                fw_new_states, bw_new_states = [], []
+                for i in range(self._rnn_depth):
+                    fw_output, fw_new_state = self._rnns["fw"][i](
+                        inputs=output_sequence,
+                        sequence_length=input_length,
+                        dtype=tf.float32)
+                    fw_new_states.append(fw_new_state)
+
+                    bw_output, bw_new_state = self._rnns["bw"][i](
+                        inputs=output_sequence,
+                        sequence_length=input_length,
+                        dtype=tf.float32)
+                    bw_new_states.append(bw_new_state)
+                    output_sequence = tf.concat([fw_output, bw_output], axis=-1)
+
+                final_state_fw = tuple(fw_new_states)
+                final_state_bw = tuple(bw_new_states)
+
+                output_sequence = tf.transpose(output_sequence, [1, 0, 2])
+                final_state = (final_state_fw, final_state_bw)
+            else:
+                outputs = tf.contrib.rnn.stack_bidirectional_dynamic_rnn(
+                    cells_fw=self._unpack_cell(self._rnns["fw"]),
+                    cells_bw=self._unpack_cell(self._rnns["bw"]),
+                    inputs=output_sequence,
+                    sequence_length=input_length,
+                    dtype=tf.float32)
+
+                output_sequence, final_state_fw, final_state_bw = outputs
+                final_state = (final_state_fw, final_state_bw)
 
         if self._rnn_output:
             output_sequence_logits, _ = tf.nn.dynamic_rnn(
@@ -157,27 +225,25 @@ class TfModel(snt.AbstractModule):
                 dtype=tf.float32)
         elif self._cnn_output:
             if not self._bidirectional:
-                for i in xrange(self._look_ahead - 1):
+                for i in range(self._look_ahead - 1):
                     output_sequence = tf.pad(output_sequence,
                                              [[0, 0], [0, 1], [0, 0]],
                                              "SYMMETRIC")
             else:
-                for i in xrange(int((self._look_ahead - 1) / 2)):
+                for i in range(int((self._look_ahead - 1) / 2)):
                     output_sequence = tf.pad(output_sequence,
                                              [[0, 0], [1, 1], [0, 0]],
                                              "SYMMETRIC")
-            batch_output_module = snt.BatchApply(self._output_module["linear"])
-            output_sequence = batch_output_module(output_sequence)
+            output_sequence = self._output_module["linear"](output_sequence)
             output_sequence_logits = tf.squeeze(self._output_module["cnn"](
                 tf.expand_dims(output_sequence, -1)))
         else:
-            batch_output_module = snt.BatchApply(self._output_module)
-            output_sequence_logits = batch_output_module(output_sequence)
+            output_sequence_logits = self._output_module(output_sequence)
 
         return output_sequence_logits, final_state
 
-    def cost(self, logits, target, length):
-        """Returns cost.
+    def loss(self, logits, target, length):
+        """Returns loss.
 
         Args:
             logits: model output.
@@ -224,10 +290,9 @@ class TfModel(snt.AbstractModule):
             max_exponent = tf.reduce_max(all_mix_prob, 1, keep_dims=True)
             mod_exponent = all_mix_prob - max_exponent
 
-            finetune_cost = -tf.reduce_mean(
+            loss = -tf.reduce_mean(
                 max_exponent + tf.log(tf.reduce_sum(tf.exp(mod_exponent), 1, keep_dims=True)))
-
-            return finetune_cost
+            return loss
 
     def _get_mixture_coef(self, logits, mix_num, var_floor=0.01):
         # pi1, pi2, pi3...

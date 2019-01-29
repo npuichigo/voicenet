@@ -19,7 +19,7 @@
 current_working_dir=$(pwd)
 voicenet_dir=$(dirname $(dirname $current_working_dir))
 
-stage=0
+stage=1
 raw=raw
 data=data
 config=config
@@ -79,7 +79,7 @@ if [ $stage -le 1 ]; then
   [ ! -e $dir ] && mkdir -p $dir
   [ ! -e $dir/nnet ] && mkdir -p $dir/nnet
   echo "Training nnet"
-  python $voicenet_dir/src/run_tts.py --save_dir=$dir "$@"
+  CUDA_VISIBLE_DEVICES=2 python $voicenet_dir/src/run_tts.py --save_dir=$dir "$@"
 fi
 
 # Decode nnet

@@ -19,7 +19,7 @@
 current_working_dir=$(pwd)
 voicenet_dir=$(dirname $(dirname $current_working_dir))
 
-stage=1
+stage=0
 raw=raw
 data=data
 config=config

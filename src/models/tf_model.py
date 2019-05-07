@@ -116,7 +116,7 @@ class TfModel(object):
                         for i in range(self._rnn_depth)
                     ]),
                     "bw": tf.nn.rnn_cell.MultiRNNCell([
-                        self._cell_fn(self._num_hidden,
+                        self._cell_fn(self._rnn_num_hidden,
                                       name="{0}_bw_{1}".format(rnn_cell, i))
                         for i in range(self._rnn_depth)
                     ]),

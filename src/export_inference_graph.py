@@ -80,7 +80,8 @@ def main(_):
         if ckpt:
             saver = tf.train.Saver()
         else:
-            tf.logging.warning("Cannot find checkpoint in {}".format(args.checkpoint))
+            tf.logging.warning(
+                "Cannot find checkpoint in {}".format(FLAGS.checkpoint_path))
             sys.exit(-1)
 
         freeze_graph.freeze_graph_with_def_protos(
